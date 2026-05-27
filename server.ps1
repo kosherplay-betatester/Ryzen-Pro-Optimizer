@@ -12,6 +12,8 @@ $RepoRoot = $PSScriptRoot
 . "$PSScriptRoot\lib\co-reader-writer.ps1"
 . "$PSScriptRoot\lib\profile-store.ps1"
 . "$PSScriptRoot\lib\telemetry-poller.ps1"
+. "$PSScriptRoot\lib\state-machine.ps1"
+. "$PSScriptRoot\lib\corecycler-runner.ps1"
 
 # Admin check (CO writes require it)
 $isAdmin = (New-Object System.Security.Principal.WindowsPrincipal([System.Security.Principal.WindowsIdentity]::GetCurrent())).IsInRole([System.Security.Principal.WindowsBuiltInRole]::Administrator)
@@ -33,6 +35,18 @@ Initialize-ProfileStore -RepoRoot $RepoRoot
 
 # Initialize telemetry (best effort)
 $telemetryReady = Initialize-Telemetry -RepoRoot $RepoRoot
+
+# Initialize CoreCycler runner (best effort)
+$runnerReady = $false
+try {
+    Initialize-CoreCyclerRunner -RepoRoot $RepoRoot
+    $runnerReady = $true
+} catch {
+    Write-Log WARN "CoreCycler runner not ready: $($_.Exception.Message)"
+}
+
+# Last report cache
+$script:LastReport = $null
 
 # Initialize CO tool (best effort — server can still run if missing, just shows error)
 $coReady = $false
@@ -176,6 +190,130 @@ Register-Route -Method GET -Path '/api/telemetry/history' -Handler {
 
 Register-Route -Method GET -Path '/api/telemetry/peaks' -Handler {
     @{ ok = $true; data = (Get-Peaks) }
+}
+
+Register-Route -Method POST -Path '/api/test/start' -Handler {
+    param($ctx, $params)
+    if (-not $runnerReady) { return @{ ok = $false; error = 'CoreCycler not installed - run Install.bat' } }
+    $cur = (Get-CurrentState).state
+    if ($cur -ne 'IDLE' -and $cur -ne 'REPORTING') {
+        return @{ ok = $false; error = "Cannot start test - current state $cur" }
+    }
+    $body = Read-JsonBody -Context $ctx
+    if (-not $body) { return @{ ok = $false; error = 'Body required' } }
+
+    $iterations = if ($body.PSObject.Properties['iterations']) { [int]$body.iterations } else { 1 }
+    $mode = if ($body.PSObject.Properties['mode']) { [string]$body.mode } else { 'SSE' }
+    $auto = $false
+    if ($body.PSObject.Properties['autoAdjust']) { $auto = [bool]$body.autoAdjust }
+
+    $autoMax = 0; $autoInc = 1; $autoStart = $null
+    if ($auto) {
+        if ($body.PSObject.Properties['autoMax']) { $autoMax = [int]$body.autoMax }
+        if ($body.PSObject.Properties['autoInc']) { $autoInc = [int]$body.autoInc }
+        if ($coReady) { $autoStart = Get-AllCoreCo -CoreCount $cpu.Cores }
+    }
+
+    $coresToTest = $null
+    if ($body.PSObject.Properties['coresToTest'] -and $body.coresToTest) {
+        $coresToTest = @($body.coresToTest | ForEach-Object { [int]$_ })
+    }
+
+    try {
+        $cfg = New-CoreCyclerConfig -RepoRoot $RepoRoot `
+            -StressTestProgram 'PRIME95' -Mode $mode -MaxIterations $iterations `
+            -CoresToTest $coresToTest -TotalCores $cpu.Cores `
+            -EnableAutomaticAdjustment $auto -AutoStartValues $autoStart `
+            -AutoMaxValue $autoMax -AutoIncrementBy $autoInc
+
+        Start-CoreCyclerRun -ConfigPath $cfg
+        Start-PeakTracking
+        Set-CurrentState -NewState 'TESTING' -Data @{
+            startedAt = (Get-Date -Format 'o')
+            mode = $mode
+            iterations = $iterations
+            autoAdjust = $auto
+            coresToTest = $coresToTest
+        }
+        $script:LastReport = $null
+        @{ ok = $true; data = (Get-CurrentState) }
+    } catch {
+        Write-Log ERROR "Test start failed: $($_.Exception.Message)"
+        @{ ok = $false; error = $_.Exception.Message }
+    }
+}
+
+Register-Route -Method POST -Path '/api/test/stop' -Handler {
+    $cur = (Get-CurrentState).state
+    if ($cur -ne 'TESTING') { return @{ ok = $false; error = "Not testing (state=$cur)" } }
+    try {
+        Set-CurrentState -NewState 'STOPPING'
+        Stop-CoreCyclerRun
+        Stop-PeakTracking
+        # Try to build the report from whatever we have
+        try { Build-Report } catch { Write-Log WARN "Build-Report failed: $($_.Exception.Message)" }
+        Set-CurrentState -NewState 'REPORTING' -Data (Get-CurrentState).data
+        @{ ok = $true; data = (Get-CurrentState) }
+    } catch {
+        @{ ok = $false; error = $_.Exception.Message }
+    }
+}
+
+Register-Route -Method GET -Path '/api/status' -Handler {
+    $state = Get-CurrentState
+    $live = $null
+    $whea = @()  # populated by WHEA Bodyguard in later phase
+
+    # Auto-transition from TESTING to REPORTING if CoreCycler has exited
+    if ($state.state -eq 'TESTING' -and -not (Test-CoreCyclerRunning)) {
+        Stop-PeakTracking
+        try { Build-Report } catch { Write-Log WARN "Build-Report on auto-transition failed: $($_.Exception.Message)" }
+        Set-CurrentState -NewState 'REPORTING' -Data $state.data
+        $state = Get-CurrentState
+    }
+
+    if ($state.state -eq 'TESTING' -or $state.state -eq 'STOPPING') {
+        $live = Get-LiveStatus
+        # Also update peaks via snapshot read while testing
+        if ($telemetryReady) { $null = Read-TelemetrySnapshot }
+    }
+
+    @{
+        ok = $true
+        data = @{
+            state = $state.state
+            stateData = $state.data
+            live = $live
+            wheaEvents = $whea
+        }
+    }
+}
+
+Register-Route -Method GET -Path '/api/report' -Handler {
+    if ($null -eq $script:LastReport) { return @{ ok = $false; error = 'No report yet' } }
+    @{ ok = $true; data = $script:LastReport }
+}
+
+# Report builder (calls Build-Report from within the runtime)
+function Build-Report {
+    # Placeholder implementation - full log-parser + smart-suggestions wired in next phase
+    $logs = Get-LatestLogs
+    $script:LastReport = @{
+        timestamp = (Get-Date -Format 'o')
+        verdict = 'UNKNOWN'
+        duration = $null
+        iterationsCompleted = 0
+        iterationsRequested = (Get-CurrentState).data['iterations']
+        testType = "PRIME95_$((Get-CurrentState).data['mode'])"
+        coresTested = @()
+        coresPassed = @()
+        coresFailed = @()
+        wheaEvents = @()
+        smartSuggestions = @('Report engine not fully wired yet - check the CoreCycler log directly.')
+        peaks = (Get-Peaks)
+        coreCyclerLogPath = $logs.coreCyclerLog
+        prime95LogPath = $logs.prime95Log
+    }
 }
 
 # ----- Boot -----
