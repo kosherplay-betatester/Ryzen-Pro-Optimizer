@@ -1,0 +1,68 @@
+<section>
+<h2>Quick Start</h2>
+
+<h3>What is Curve Optimizer?</h3>
+<p>Curve Optimizer (CO) is an AMD feature on Ryzen 5000 and newer that lets you shift each core's voltage/frequency curve. Negative offsets undervolt: the core uses less voltage at every clock — cooler, quieter, longer-lived, and often <em>faster</em> because boost behavior depends on thermals.</p>
+<p>Each "point" of CO is roughly 3–5 millivolts. Values are temporary — they reset on every reboot. When you find your sweet spot, write it into your BIOS to make it permanent.</p>
+
+<h3>A word about the silicon lottery</h3>
+<p>Every CPU is unique. Two identical chips off the same shelf can have wildly different limits. And within one CPU, individual cores vary too — your best core might happily run at −30 while your weakest one crashes at −10. <strong>That's normal.</strong> Finding your chip's sweet spot is trial and error, not a failure on your end. Be patient, step in small increments, and the report will guide you.</p>
+
+<h3>Step 1: Pick your mode</h3>
+<p><strong>All cores</strong> — single value applied to every core. Easiest, but limited by your weakest core.</p>
+<p><strong>Per-CCD</strong> — separate value per CCD (only shown on dual-CCD chips like 7950X, 7950X3D, 9950X). On X3D variants, CCD0 has the V-Cache and is more sensitive to undervolt; CCD1 typically tolerates deeper offsets.</p>
+<p><strong>Per-core</strong> — set every core individually. Most flexibility, biggest reward, longest tuning time.</p>
+
+<h3>Step 2: Set values</h3>
+<p>Start gentle — try −10 first. If stable, push further. Step in 5-point increments while finding the rough limit, then narrow to 2 or 1 as you approach the edge. Click Apply.</p>
+
+<h3>Step 3: Choose a test</h3>
+<p>Default is Prime95 SSE — the most thorough Curve Optimizer stress test for Ryzen. AVX2 and AVX512 stress different SIMD units but run hotter. Pick the cycle count: 1 cycle for a quick sanity check, <strong>3+ cycles strongly recommended</strong> for a confident stability result.</p>
+
+<h3>Step 4: Read the report</h3>
+<p>When the test ends, a friendly report shows pass/fail per core, peak temps and power, and Smart Suggestions for your next step.</p>
+<ul>
+  <li><strong>PASSED</strong> — all cores survived. Consider pushing further or banking the values as a profile.</li>
+  <li><strong>FAILED</strong> — one or more cores errored. The report tells you which core and the suggested dial-back amount.</li>
+  <li><strong>INCOMPLETE</strong> — test was stopped before finishing. Partial info, no verdict.</li>
+</ul>
+
+<h3>The Esc panic button</h3>
+<p>If your system goes unstable, press <kbd>Esc</kbd> at any time (or click the red <strong>RESET CO</strong> button in the header). All cores instantly reset to zero offset. No confirmation, no delay — works even mid-test.</p>
+
+<h3>Settings reset on reboot</h3>
+<p>Anything you apply here is temporary. After a reboot, your BIOS Curve Optimizer values return. Once you've found your sweet spot, write those values into BIOS for permanent application.</p>
+
+<h2>Advanced</h2>
+
+<h3>Auto-Adjust mode</h3>
+<p>Lets CoreCycler automatically bump CO values upward (less negative) when it sees errors during a run. You set starting values, an upper ceiling (e.g. 0), and an increment (1–5 points). CoreCycler walks each core until stable or the ceiling is reached, then moves on. Useful when you want to walk away and let it find each core's edge autonomously.</p>
+<p>Manual mode (default) keeps you in the loop: it tests with your values, reports the result, and you decide what to change.</p>
+
+<h3>Per-CCD strategy for V-Cache chips (7800X3D, 7900X3D, 7950X3D, 9800X3D, 9900X3D, 9950X3D)</h3>
+<p>The V-Cache CCD is more sensitive to undervolt because the cache stack on top constrains voltage and thermals. Most users hit the wall between −15 and −20 on V-Cache CCDs. The non-cache CCD (on dual-CCD parts) usually tolerates much more — often −25 to −30. Always start gentler on the V-Cache CCD.</p>
+
+<h3>Step-size strategy</h3>
+<p>Start with 5-point increments. When you're a few points away from your suspected limit, switch to 2-point steps. Once you start seeing errors, step in 1 to find the exact edge. Then back off 2–3 points for safety margin.</p>
+
+<h3>What WHEA events mean</h3>
+<p>WHEA (Windows Hardware Error Architecture) events are the OS-level signal that the CPU detected a corrected hardware error. They don't always crash your system but they mean something went wrong. The Bodyguard indicator in the header is always watching for them — when one fires, you get a toast notification immediately. A WHEA event during a stress test is a clear signal to back off the CO offset.</p>
+
+<h3>Profile management</h3>
+<p>Profiles are saved as JSON in the <code>profiles/</code> folder, tagged with your CPU model. They store mode + values + optional notes. Clicking <strong>Apply</strong> on a saved profile writes its CO values immediately. Profiles do <em>not</em> auto-apply at boot — that would be a security/foot-gun risk. To re-apply after reboot, launch the app and click Apply.</p>
+
+<h3>Reading the report</h3>
+<p>The verdict logic:</p>
+<ul>
+  <li><strong>PASSED</strong> — all cores completed all iterations cleanly, no WHEA events.</li>
+  <li><strong>FAILED</strong> — at least one core errored OR a WHEA event fired.</li>
+  <li><strong>INCOMPLETE</strong> — user stopped the test before completion. Partial data only.</li>
+</ul>
+<p>Smart Suggestions include next-step recommendations tailored to your verdict, mode, and CPU type. They're suggestions — not rules. Use your judgment.</p>
+
+<h3>Troubleshooting</h3>
+<p><strong>Browser shows "Curve Optimizer Not Supported"</strong> — your CPU is older than Zen 3 (pre-Ryzen 5000). CO doesn't exist on those.</p>
+<p><strong>"ryzen-smu-cli not found"</strong> — run Install.bat to fetch CoreCycler dependencies.</p>
+<p><strong>Sensors not showing</strong> — LibreHardwareMonitorLib may have failed to load. App still works for CO setting and testing.</p>
+<p><strong>Test ends unexpectedly</strong> — the CoreCycler subprocess may have crashed. Verdict is INCOMPLETE; check CoreCycler's own log under <code>corecycler/logs/</code>.</p>
+</section>
