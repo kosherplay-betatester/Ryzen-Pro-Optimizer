@@ -11,6 +11,7 @@ $RepoRoot = $PSScriptRoot
 . "$PSScriptRoot\lib\cpu-detect.ps1"
 . "$PSScriptRoot\lib\co-reader-writer.ps1"
 . "$PSScriptRoot\lib\profile-store.ps1"
+. "$PSScriptRoot\lib\telemetry-poller.ps1"
 
 # Admin check (CO writes require it)
 $isAdmin = (New-Object System.Security.Principal.WindowsPrincipal([System.Security.Principal.WindowsIdentity]::GetCurrent())).IsInRole([System.Security.Principal.WindowsBuiltInRole]::Administrator)
@@ -29,6 +30,9 @@ Write-Log INFO "Detected CPU: $($cpu.Name) ($($cpu.Cores) cores, $(if ($cpu.IsDu
 
 # Initialize profile store
 Initialize-ProfileStore -RepoRoot $RepoRoot
+
+# Initialize telemetry (best effort)
+$telemetryReady = Initialize-Telemetry -RepoRoot $RepoRoot
 
 # Initialize CO tool (best effort — server can still run if missing, just shows error)
 $coReady = $false
@@ -159,6 +163,19 @@ Register-Route -Method POST -Path '/api/profiles/{name}/apply' -Handler {
     } catch {
         @{ ok = $false; error = $_.Exception.Message }
     }
+}
+
+Register-Route -Method GET -Path '/api/telemetry' -Handler {
+    if (-not (Test-TelemetryAvailable)) { return @{ ok = $false; error = 'Telemetry unavailable' } }
+    @{ ok = $true; data = (Read-TelemetrySnapshot) }
+}
+
+Register-Route -Method GET -Path '/api/telemetry/history' -Handler {
+    @{ ok = $true; data = (Get-TelemetryHistory) }
+}
+
+Register-Route -Method GET -Path '/api/telemetry/peaks' -Handler {
+    @{ ok = $true; data = (Get-Peaks) }
 }
 
 # ----- Boot -----
