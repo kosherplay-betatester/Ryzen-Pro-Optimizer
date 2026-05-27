@@ -14,6 +14,8 @@ $RepoRoot = $PSScriptRoot
 . "$PSScriptRoot\lib\telemetry-poller.ps1"
 . "$PSScriptRoot\lib\state-machine.ps1"
 . "$PSScriptRoot\lib\corecycler-runner.ps1"
+. "$PSScriptRoot\lib\log-parser.ps1"
+. "$PSScriptRoot\lib\smart-suggestions.ps1"
 
 # Admin check (CO writes require it)
 $isAdmin = (New-Object System.Security.Principal.WindowsPrincipal([System.Security.Principal.WindowsIdentity]::GetCurrent())).IsInRole([System.Security.Principal.WindowsBuiltInRole]::Administrator)
@@ -294,26 +296,51 @@ Register-Route -Method GET -Path '/api/report' -Handler {
     @{ ok = $true; data = $script:LastReport }
 }
 
-# Report builder (calls Build-Report from within the runtime)
 function Build-Report {
-    # Placeholder implementation - full log-parser + smart-suggestions wired in next phase
     $logs = Get-LatestLogs
-    $script:LastReport = @{
-        timestamp = (Get-Date -Format 'o')
-        verdict = 'UNKNOWN'
-        duration = $null
-        iterationsCompleted = 0
-        iterationsRequested = (Get-CurrentState).data['iterations']
-        testType = "PRIME95_$((Get-CurrentState).data['mode'])"
-        coresTested = @()
-        coresPassed = @()
-        coresFailed = @()
-        wheaEvents = @()
-        smartSuggestions = @('Report engine not fully wired yet - check the CoreCycler log directly.')
-        peaks = (Get-Peaks)
-        coreCyclerLogPath = $logs.coreCyclerLog
-        prime95LogPath = $logs.prime95Log
+    $stateData = (Get-CurrentState).data
+    $iterReq = if ($stateData -and $stateData['iterations']) { [int]$stateData['iterations'] } else { 1 }
+    $mode = if ($stateData -and $stateData['mode']) { [string]$stateData['mode'] } else { '' }
+
+    # Read current CO values for failure attribution (best effort)
+    $currentVals = $null
+    if ($coReady) {
+        try { $currentVals = Get-AllCoreCo -CoreCount $cpu.Cores } catch { Write-Log WARN "CO read for report failed: $($_.Exception.Message)" }
     }
+
+    $r = Read-CoreCyclerLog `
+        -CoreCyclerLogPath $logs.coreCyclerLog `
+        -Prime95LogPath $logs.prime95Log `
+        -CpuInfo $cpu `
+        -CurrentCoValues $currentVals `
+        -IterationsRequested $iterReq
+
+    # Add Smart Suggestions
+    $reportMode = if ($mode) { 'all-cores' } else { 'all-cores' }
+    if ($stateData -and $stateData.PSObject.Properties['mode']) {
+        # 'mode' here is the stress-test type, not CO mode; we don't currently track CO mode in state
+        # Use a heuristic: if all CO values are equal -> all-cores; if half-half -> per-ccd; else per-core
+    }
+    if ($currentVals -and $currentVals.Count -gt 0) {
+        $allSame = ($currentVals | Select-Object -Unique).Count -eq 1
+        if ($allSame) { $reportMode = 'all-cores' }
+        elseif ($cpu.IsDualCcd) {
+            $ccd0Same = ($currentVals[0..($cpu.CoresPerCcd-1)] | Select-Object -Unique).Count -eq 1
+            $ccd1Same = ($currentVals[$cpu.CoresPerCcd..($cpu.Cores-1)] | Select-Object -Unique).Count -eq 1
+            if ($ccd0Same -and $ccd1Same) { $reportMode = 'per-ccd' } else { $reportMode = 'per-core' }
+        } else {
+            $reportMode = 'per-core'
+        }
+    }
+
+    $suggestions = Get-SmartSuggestions -Report $r -Mode $reportMode -CpuInfo $cpu -CurrentCoValues $currentVals
+
+    $reportObj = $r | Select-Object *
+    $reportObj | Add-Member -NotePropertyName smartSuggestions -NotePropertyValue $suggestions -Force
+    $reportObj | Add-Member -NotePropertyName peaks -NotePropertyValue (Get-Peaks) -Force
+    $reportObj | Add-Member -NotePropertyName coMode -NotePropertyValue $reportMode -Force
+    $script:LastReport = $reportObj
+    Write-Log INFO "Report built: verdict=$($r.verdict), failed=$($r.coresFailed.Count)"
 }
 
 # ----- Boot -----
