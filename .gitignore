@@ -1,0 +1,30 @@
+# Runtime / transient state
+runtime/
+*.log
+launch-snapshot.json
+last-test-peaks.json
+bodyguard-log.json
+
+# User profiles (CPU-specific personal data)
+profiles/*.json
+!profiles/.gitkeep
+!profiles/example-*.json
+
+# Editor / IDE
+.vs/
+.vscode/
+.idea/
+*.swp
+*~
+
+# OS
+Thumbs.db
+desktop.ini
+.DS_Store
+
+# PowerShell
+*.ps1.bak
+
+# Temporary
+tmp/
+temp/
