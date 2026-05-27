@@ -1,7 +1,8 @@
 BeforeAll { . "$PSScriptRoot\..\lib\router.ps1" }
-BeforeEach { Clear-Routes }
 
 Describe 'router' {
+    BeforeEach { Clear-Routes }
+
     It 'finds an exact match' {
         Register-Route -Method GET -Path '/api/cpu' -Handler { 'cpu' }
         $r = Resolve-Route -Method GET -Path '/api/cpu'
