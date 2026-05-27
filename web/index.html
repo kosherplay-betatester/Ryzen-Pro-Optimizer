@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Ryzen Pro Optimizer</title>
+<link rel="stylesheet" href="/style.css">
+</head>
+<body>
+<header>
+  <div class="brand">
+    <span class="logo">⚡</span>
+    <h1>Ryzen Pro Optimizer</h1>
+  </div>
+  <div class="header-actions">
+    <span id="bodyguard" class="bodyguard" title="WHEA Bodyguard"><span class="dot"></span> Bodyguard</span>
+    <button id="open-help" class="secondary" title="Help">?</button>
+    <button id="reset-co" class="danger" title="Reset all CO to 0 (or press Esc)">🔴 RESET CO</button>
+  </div>
+</header>
+
+<main>
+  <div id="cpu-info" class="card">Loading CPU…</div>
+  <div id="not-supported" class="card hidden"></div>
+
+  <div id="telemetry-strip" class="card telemetry hidden">Loading sensors…</div>
+  <div id="telemetry-expanded" class="card hidden"></div>
+
+  <div id="co-banner" class="card hidden"></div>
+
+  <section class="card hidden" id="curve-card">
+    <h2>1. Set Curve Optimizer</h2>
+    <div class="tabs">
+      <button class="tab active" data-mode="all-cores">All cores</button>
+      <button class="tab" data-mode="per-ccd" id="tab-ccd">Per-CCD</button>
+      <button class="tab" data-mode="per-core">Per-core</button>
+    </div>
+    <div id="curve-form"></div>
+    <div class="actions">
+      <button id="apply-co" class="primary">Apply</button>
+      <button id="revert-co" class="secondary">Revert to launch</button>
+      <button id="save-profile" class="secondary">Save as profile…</button>
+    </div>
+  </section>
+
+  <section class="card hidden" id="test-card">
+    <h2>2. Test Stability</h2>
+    <div class="co-input">
+      <label>Test:</label>
+      <select id="test-mode">
+        <option value="SSE">Prime95 SSE</option>
+        <option value="AVX2">Prime95 AVX2</option>
+        <option value="AVX512">Prime95 AVX512</option>
+      </select>
+    </div>
+    <div class="co-input"><label>Cycles:</label><input type="number" id="iterations" value="1" min="1" max="10000"></div>
+    <p class="muted small">Default 1 cycle. <strong>3+ cycles recommended</strong> for confident stability testing.</p>
+    <div class="co-input"><label>Mode:</label>
+      <label class="inline-radio"><input type="radio" name="testMode" value="manual" checked> Manual</label>
+      <label class="inline-radio"><input type="radio" name="testMode" value="auto"> Auto-Adjust (advanced)</label>
+    </div>
+    <div id="auto-options" class="hidden">
+      <div class="co-input"><label>Max value (least-negative ceiling):</label><input type="number" id="auto-max" value="0" min="-50" max="50"></div>
+      <div class="co-input"><label>Increment by:</label><input type="number" id="auto-inc" value="1" min="1" max="5"></div>
+    </div>
+    <div class="actions">
+      <button id="start-test" class="primary">▶ Start Test</button>
+      <button id="stop-test" class="danger hidden">■ Stop test</button>
+    </div>
+  </section>
+
+  <section class="card hidden" id="status-card">
+    <h2>3. Live Status</h2>
+    <div id="status-content"></div>
+  </section>
+
+  <section class="card hidden" id="report-card">
+    <h2>4. Report</h2>
+    <div id="report-content"></div>
+  </section>
+
+  <section class="card" id="profiles-card">
+    <h2>Profiles</h2>
+    <div id="profiles-list" class="muted">No profiles yet.</div>
+  </section>
+</main>
+
+<aside id="help-panel" class="slide-out hidden">
+  <button id="close-help" title="Close">×</button>
+  <div id="help-content">Loading…</div>
+</aside>
+
+<footer class="footer">⚠ Stuck or unstable? Press <kbd>Esc</kbd> to instantly reset all cores to 0.</footer>
+
+<script src="/app.js"></script>
+</body>
+</html>
