@@ -16,6 +16,7 @@ $RepoRoot = $PSScriptRoot
 . "$PSScriptRoot\lib\corecycler-runner.ps1"
 . "$PSScriptRoot\lib\log-parser.ps1"
 . "$PSScriptRoot\lib\smart-suggestions.ps1"
+. "$PSScriptRoot\lib\whea-watcher.ps1"
 
 # Admin check (CO writes require it)
 $isAdmin = (New-Object System.Security.Principal.WindowsPrincipal([System.Security.Principal.WindowsIdentity]::GetCurrent())).IsInRole([System.Security.Principal.WindowsBuiltInRole]::Administrator)
@@ -49,6 +50,10 @@ try {
 
 # Last report cache
 $script:LastReport = $null
+
+# Initialize WHEA Bodyguard (best effort; needs admin)
+Initialize-WheaWatcher -RepoRoot $RepoRoot
+$wheaActive = Start-WheaWatcher
 
 # Initialize CO tool (best effort — server can still run if missing, just shows error)
 $coReady = $false
@@ -264,7 +269,7 @@ Register-Route -Method POST -Path '/api/test/stop' -Handler {
 Register-Route -Method GET -Path '/api/status' -Handler {
     $state = Get-CurrentState
     $live = $null
-    $whea = @()  # populated by WHEA Bodyguard in later phase
+    $whea = Get-WheaEvents
 
     # Auto-transition from TESTING to REPORTING if CoreCycler has exited
     if ($state.state -eq 'TESTING' -and -not (Test-CoreCyclerRunning)) {
@@ -287,8 +292,18 @@ Register-Route -Method GET -Path '/api/status' -Handler {
             stateData = $state.data
             live = $live
             wheaEvents = $whea
+            bodyguardActive = (Test-WheaWatcherActive)
         }
     }
+}
+
+Register-Route -Method GET -Path '/api/whea' -Handler {
+    @{ ok = $true; data = (Get-WheaEvents) }
+}
+
+Register-Route -Method POST -Path '/api/whea/clear' -Handler {
+    Clear-WheaEvents
+    @{ ok = $true; data = @{ cleared = $true } }
 }
 
 Register-Route -Method GET -Path '/api/report' -Handler {
@@ -352,6 +367,8 @@ try { Start-Process $url } catch { Write-Host "Open this URL manually: $url" }
 try {
     Invoke-ServerLoop -Listener $listener -WebRoot (Join-Path $PSScriptRoot 'web')
 } finally {
+    try { Stop-WheaWatcher } catch {}
+    try { Close-Telemetry } catch {}
     try { $listener.Stop() } catch {}
     try { $listener.Close() } catch {}
     Write-Log INFO "Server stopped"
