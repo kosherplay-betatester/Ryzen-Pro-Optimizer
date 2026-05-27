@@ -96,32 +96,52 @@ A local web-based UI that wraps CoreCycler to make per-core Curve Optimizer tuni
 
 ## 4. File Layout
 
+**Ryzen Pro Optimizer is a standalone app.** Users clone the repo anywhere on disk. On first launch (or via Install.bat), the installer fetches CoreCycler from its official GitHub releases page into a local `corecycler/` subfolder. No dependency on an existing CoreCycler install — everything is contained in our project folder.
+
 ```
-CoreCycler-master/
-├── Run CoreCycler.bat                  (untouched)
-├── Launch Ryzen Pro Optimizer.bat      ← new, opens UI in browser
-├── ryzen-pro-optimizer/                ← new folder, all UI files here
-│   ├── server.ps1                      ← HTTP server + state machine
-│   ├── lib/
-│   │   ├── cpu-detect.ps1              ← detects model, cores, CCDs, V-Cache
-│   │   ├── co-reader-writer.ps1        ← ryzen-smu-cli wrapper (read + write)
-│   │   ├── corecycler-runner.ps1       ← spawns CoreCycler with generated config
-│   │   ├── log-parser.ps1              ← parses CoreCycler + Prime95 logs into report data
-│   │   ├── whea-watcher.ps1            ← Event Log subscription
-│   │   ├── telemetry-poller.ps1        ← LibreHardwareMonitorLib wrapper
-│   │   └── profile-store.ps1           ← JSON profile save/load
-│   ├── vendor/
-│   │   └── LibreHardwareMonitorLib.dll ← bundled, MIT-licensed sensor library
-│   ├── web/
-│   │   ├── index.html
-│   │   ├── style.css
-│   │   ├── app.js
-│   │   └── help.html                   ← help content (loaded into slide-out)
-│   ├── profiles/                       ← saved CO profiles (.json)
-│   ├── runtime/                        ← transient: generated config.ini, run state
-│   └── README.md
-└── (existing CoreCycler files...)
+Ryzen-Pro-Optimizer/                    ← repo root (clone anywhere)
+├── .git/
+├── .gitignore
+├── README.md
+├── Launch.bat                          ← user double-clicks; auto-runs installer on first run
+├── Install.bat                         ← optional explicit installer entry point
+├── server.ps1                          ← HTTP server + state machine
+├── installer.ps1                       ← fetches CoreCycler from GitHub releases
+├── lib/
+│   ├── cpu-detect.ps1                  ← detects model, cores, CCDs, V-Cache
+│   ├── co-reader-writer.ps1            ← ryzen-smu-cli wrapper (read + write)
+│   ├── corecycler-runner.ps1           ← spawns CoreCycler with generated config
+│   ├── log-parser.ps1                  ← parses CoreCycler + Prime95 logs into report data
+│   ├── whea-watcher.ps1                ← Event Log subscription
+│   ├── telemetry-poller.ps1            ← LibreHardwareMonitorLib wrapper
+│   └── profile-store.ps1               ← JSON profile save/load
+├── vendor/
+│   └── LibreHardwareMonitorLib.dll     ← bundled, MIT-licensed sensor library
+├── web/
+│   ├── index.html
+│   ├── style.css
+│   ├── app.js
+│   └── help.html                       ← help content (loaded into slide-out)
+├── profiles/                           ← saved CO profiles (.json) — gitignored
+├── runtime/                            ← transient state (gitignored)
+├── corecycler/                         ← downloaded by installer (gitignored)
+│   ├── script-corecycler.ps1
+│   ├── tools/ryzen-smu-cli/...
+│   └── ...
+└── docs/
+    └── superpowers/
+        ├── specs/
+        └── plans/
 ```
+
+**Installer responsibilities (`installer.ps1`):**
+1. On first launch (or when `corecycler/` is missing), prompt user to install
+2. Hit GitHub Releases API to find the latest CoreCycler release
+3. Download the release ZIP to `installer-cache/`
+4. Extract relevant files (`script-corecycler.ps1`, `tools/`, all `.ps1` helpers, default `config.ini`) into `corecycler/`
+5. Verify required executables exist: `corecycler/tools/ryzen-smu-cli/ryzen-smu-cli.exe`
+6. If verification fails, show error with the GitHub link for manual install
+7. Optional: on subsequent launches, check for newer CoreCycler version and offer update
 
 ---
 
@@ -713,6 +733,7 @@ If a WHEA event fires while their app is in their browser idle tab, the indicato
 
 (Detailed plan will be created by the writing-plans skill after this spec is approved.)
 
+- **Phase 0:** Project bootstrap — Launch.bat, installer.ps1 (fetches CoreCycler from GitHub releases into ./corecycler/), elevation handling, port selection
 - **Phase 1:** PowerShell HTTP server skeleton + static UI shell + CPU detection + **CO read (BIOS detection)** + launch banner + Help section
 - **Phase 2:** CO writing (all-cores, per-CCD, per-core) + Revert to launch + profile save/load + Reset/Esc panic
 - **Phase 3:** **Live telemetry panel** (LibreHardwareMonitorLib integration, compact strip + expanded dashboard, sparklines)

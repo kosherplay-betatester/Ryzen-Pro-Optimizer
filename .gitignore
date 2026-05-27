@@ -5,6 +5,12 @@ launch-snapshot.json
 last-test-peaks.json
 bodyguard-log.json
 
+# CoreCycler files fetched by the installer (not part of our repo)
+corecycler/
+
+# Installer download cache
+installer-cache/
+
 # User profiles (CPU-specific personal data)
 profiles/*.json
 !profiles/.gitkeep
