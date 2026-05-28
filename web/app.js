@@ -216,7 +216,19 @@ async function resetCo() {
 }
 
 async function startTest() {
-  const auto = document.querySelector('input[name="testMode"]:checked').value === 'auto';
+  const mode = document.querySelector('input[name="testMode"]:checked').value;
+  if (mode === 'smart') {
+    const smartMode = document.getElementById('smart-mode').value;
+    const direction = smartMode === 'overclock' ? 'overclock' : 'undervolt';
+    const ok = await SmartTune.start(smartMode, direction);
+    if (!ok) return;
+    document.getElementById('start-test').classList.add('hidden');
+    document.getElementById('stop-test').classList.remove('hidden');
+    document.getElementById('status-card').classList.remove('hidden');
+    document.getElementById('report-card').classList.add('hidden');
+    return;
+  }
+  const auto = mode === 'auto';
   const body = {
     mode: document.getElementById('test-mode').value,
     iterations: +document.getElementById('iterations').value,
@@ -235,14 +247,19 @@ async function startTest() {
   document.getElementById('stop-test').classList.remove('hidden');
   document.getElementById('status-card').classList.remove('hidden');
   document.getElementById('report-card').classList.add('hidden');
-  // Auto-open Pro Dashboard + reset stats so the user sees the run from t=0
   ProDash.resetStats();
   ProDash.show();
 }
 
 async function stopTest() {
-  await fetchJson('/api/test/stop', { method: 'POST' });
+  const mode = document.querySelector('input[name="testMode"]:checked').value;
+  if (mode === 'smart') {
+    await SmartTune.stop();
+  } else {
+    await fetchJson('/api/test/stop', { method: 'POST' });
+  }
   document.getElementById('stop-test').classList.add('hidden');
+  document.getElementById('start-test').classList.remove('hidden');
 }
 
 async function loadReport() {
@@ -764,6 +781,7 @@ async function pollStatus() {
       playSafetyBeep();
       lastWheaCount = s.wheaEvents.length;
     }
+    if (s.smartTune) SmartTune.renderState(s.smartTune);
     renderSafetyBanner(s);
   } catch (e) { /* server may be starting */ }
 }
@@ -879,12 +897,15 @@ document.addEventListener('keydown', async e => {
 
 document.addEventListener('change', e => {
   if (e.target.name === 'testMode') {
-    const isAuto = e.target.value === 'auto';
-    document.getElementById('auto-options').classList.toggle('hidden', !isAuto);
-    document.getElementById('mode-info-auto').classList.toggle('hidden', !isAuto);
-    document.getElementById('mode-info-manual').classList.toggle('hidden', isAuto);
+    const v = e.target.value;
+    document.getElementById('auto-options').classList.toggle('hidden', v !== 'auto');
+    document.getElementById('smart-options').classList.toggle('hidden', v !== 'smart');
+    document.getElementById('mode-info-auto').classList.toggle('hidden', v !== 'auto');
+    document.getElementById('mode-info-manual').classList.toggle('hidden', v !== 'manual');
     const btn = document.getElementById('start-test');
-    if (btn) btn.textContent = isAuto ? '▶ Start Auto-Adjust' : '▶ Start';
+    if (btn) btn.textContent = v === 'smart' ? '▶ Start Smart Tune'
+                              : v === 'auto'  ? '▶ Start Auto-Adjust'
+                              : '▶ Start';
   }
 });
 
@@ -1031,3 +1052,121 @@ document.addEventListener('DOMContentLoaded', async () => {
     document.body.insertAdjacentHTML('beforeend', `<div class="card warn">Failed to initialize: ${e.message}</div>`);
   }
 });
+
+// ============================================================================
+//  SmartTune - Tune Theater rendering + start/stop wiring
+// ============================================================================
+const SmartTune = (() => {
+  let lastSeqId = 0;
+  let probesCompletedTotal = 0;
+  let probesPlannedTotal = 0;
+
+  function show() {
+    document.getElementById('tune-theater')?.classList.remove('hidden');
+  }
+  function hide() {
+    document.getElementById('tune-theater')?.classList.add('hidden');
+    lastSeqId = 0;
+  }
+
+  function fmtTime(iso) {
+    const d = new Date(iso);
+    const pad = n => n.toString().padStart(2,'0');
+    return `${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+  }
+
+  function renderState(s) {
+    if (!s || s.status === 'IDLE' || s.status === 'STOPPED') { hide(); return; }
+    show();
+    document.getElementById('theater-mode').textContent = `${s.mode || '?'} · ${s.direction || '?'}`;
+    document.getElementById('theater-session').textContent = (s.sessionId || '—').substring(0, 8);
+
+    // Progress
+    probesPlannedTotal = (s.scopes || []).length * 6;  // rough estimate: 6 probes per scope
+    probesCompletedTotal = (s.scopes || [])
+      .map(sc => (sc.scopeState && sc.scopeState.probesCompleted) || (sc.status === 'LOCKED' ? 6 : 0))
+      .reduce((a,b) => a+b, 0);
+    const pct = probesPlannedTotal > 0 ? Math.min(100, Math.round(100 * probesCompletedTotal / probesPlannedTotal)) : 0;
+    document.getElementById('theater-overall-fill').style.width = pct + '%';
+    document.getElementById('theater-overall-pct').textContent = pct + '%';
+
+    // Per-scope cards
+    const wrap = document.getElementById('theater-scopes');
+    wrap.innerHTML = (s.scopes || []).map((sc, i) => {
+      const isActive = i === s.currentIdx && s.status === 'RUNNING';
+      const cls = sc.status === 'LOCKED' ? 's-locked' :
+                  sc.status === 'FAILED' ? 's-failed' :
+                  isActive ? 's-active' : '';
+      const ss = sc.scopeState;
+      const bounds = ss ? `[${ss.bounds.floor} .. ${ss.bounds.ceiling}]` : '';
+      const knownLine = ss
+        ? `stable ${ss.knownStable ?? '—'} · edge ${ss.knownUnstable ?? '—'} · ${ss.probesCompleted} probes`
+        : 'pending';
+      const lockedLine = sc.locked != null ? `<div>🔒 <strong>${sc.locked}</strong></div>` : '';
+      let windowLeftPct = 0, windowWidthPct = 100;
+      if (ss && ss.knownStable != null && ss.knownUnstable != null) {
+        const span = ss.bounds.ceiling - ss.bounds.floor;
+        const lo = Math.min(ss.knownStable, ss.knownUnstable);
+        const hi = Math.max(ss.knownStable, ss.knownUnstable);
+        windowLeftPct = 100 * (lo - ss.bounds.floor) / span;
+        windowWidthPct = 100 * (hi - lo) / span;
+      }
+      return `<div class="theater-scope ${cls}">
+        <div class="s-id">${sc.id}${sc.isVCache ? ' 🔋' : ''}</div>
+        <div class="s-bounds">${bounds}</div>
+        <div class="s-bounds">${knownLine}</div>
+        ${lockedLine}
+        <div class="s-bisect"><div class="s-bisect-window" style="left:${windowLeftPct}%;width:${windowWidthPct}%"></div></div>
+      </div>`;
+    }).join('');
+
+    // Narrative — append new entries since lastSeqId
+    if (s.narrative && s.narrative.length) {
+      const log = document.getElementById('narrative-log');
+      const auto = document.getElementById('narrative-autoscroll')?.checked;
+      s.narrative.forEach(e => {
+        if (e.seqId <= lastSeqId) return;
+        const line = document.createElement('div');
+        line.className = 'narr-line';
+        line.innerHTML = `<span class="narr-ts">${fmtTime(e.ts)}</span><span class="narr-icon">${e.icon}</span>${e.message}`;
+        log.appendChild(line);
+        lastSeqId = e.seqId;
+      });
+      if (auto) log.scrollTop = log.scrollHeight;
+    }
+    if (s.latestSeqId) lastSeqId = Math.max(lastSeqId, s.latestSeqId);
+
+    // Currently strip
+    const cur = (s.scopes || [])[s.currentIdx];
+    if (cur && cur.scopeState) {
+      const ss = cur.scopeState;
+      document.getElementById('theater-currently').innerHTML =
+        `▶ Probing <strong>${cur.id}</strong> — bounds [${ss.knownStable ?? '?'}, ${ss.knownUnstable ?? '?'}], probe ${ss.probesCompleted + 1}, last result ${ss.lastResult || '—'}`;
+    } else if (s.status === 'COMPLETED') {
+      document.getElementById('theater-currently').innerHTML = '✅ Tune complete — see report below';
+    } else if (s.status === 'RUNNING') {
+      document.getElementById('theater-currently').textContent = 'Picking next scope…';
+    }
+  }
+
+  async function start(mode, direction) {
+    const r = await fetchJson('/api/smart-tune/start', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ mode, direction })
+    });
+    if (!r.ok) { showToast('Start failed: ' + r.error, 'error'); return false; }
+    lastSeqId = 0;
+    document.getElementById('narrative-log').innerHTML = '';
+    show();
+    ProDash.resetStats();
+    ProDash.show();
+    return true;
+  }
+
+  async function stop() {
+    await fetchJson('/api/smart-tune/stop', { method: 'POST' });
+  }
+
+  return { renderState, start, stop, show, hide };
+})();
