@@ -143,6 +143,22 @@ if (Test-Path $panicPath) {
     } catch {}
 }
 
+$script:PendingSmartSession = $null
+$sessPath = Join-Path $RepoRoot 'runtime\tuner-session.json'
+if (Test-Path $sessPath) {
+    try {
+        $script:PendingSmartSession = Get-Content $sessPath -Raw | ConvertFrom-Json
+        Write-Host ""
+        Write-Host "============================================================" -ForegroundColor Yellow
+        Write-Host "  PREVIOUS SMART TUNE SESSION DETECTED" -ForegroundColor Yellow
+        Write-Host "  Mode: $($script:PendingSmartSession.mode)" -ForegroundColor Yellow
+        Write-Host "  Status when stopped: $($script:PendingSmartSession.status)" -ForegroundColor Yellow
+        Write-Host "  The UI will offer to resume or discard." -ForegroundColor Yellow
+        Write-Host "============================================================" -ForegroundColor Yellow
+        Write-Host ""
+    } catch {}
+}
+
 # Graceful shutdown: revert CO, stop test, close listener
 function Invoke-GracefulShutdown {
     Write-Log INFO "Graceful shutdown initiated"
@@ -543,6 +559,10 @@ Register-Route -Method POST -Path '/api/smart-tune/discard' -Handler {
 Register-Route -Method GET -Path '/api/smart-tune/history' -Handler {
     $entries = @(Read-HistoryEntries -Path $script:SmartTuneHistoryPath -CpuModel $cpu.Name)
     @{ ok = $true; data = @{ cpuModel = $cpu.Name; entries = $entries } }
+}
+
+Register-Route -Method GET -Path '/api/smart-tune/pending-session' -Handler {
+    @{ ok = $true; data = $script:PendingSmartSession }
 }
 
 Register-Route -Method GET -Path '/api/panic-revert' -Handler {
