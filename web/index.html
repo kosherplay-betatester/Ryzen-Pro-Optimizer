@@ -130,6 +130,7 @@
     <div class="co-input"><label>Mode:</label>
       <label class="inline-radio"><input type="radio" name="testMode" value="manual" checked> Manual test</label>
       <label class="inline-radio"><input type="radio" name="testMode" value="auto"> Auto-Adjust</label>
+      <label class="inline-radio"><input type="radio" name="testMode" value="smart"> Smart Auto-Adjust (Pro)</label>
     </div>
 
     <div id="mode-info-manual" class="info-box">
@@ -161,6 +162,20 @@
     <div id="auto-options" class="hidden">
       <div class="co-input"><label>Max value (least-negative ceiling):</label><input type="number" id="auto-max" value="0" min="-50" max="50"></div>
       <div class="co-input"><label>Increment by (points per error):</label><input type="number" id="auto-inc" value="1" min="1" max="5"></div>
+    </div>
+
+    <div id="smart-options" class="hidden">
+      <div class="co-input">
+        <label>Goal mode:</label>
+        <select id="smart-mode">
+          <option value="daily-driver" selected>Daily Driver — 30–60 min, safe daily values</option>
+          <option value="max-stable">Max Stable — 3–6 h, deepest verified offsets</option>
+          <option value="adaptive">Adaptive — runs for hours/days, continuously refines</option>
+          <option value="characterize">Characterize — map each core's V/F behaviour (insight)</option>
+          <option value="overclock">Overclock — positive CO offsets to chase higher boost</option>
+        </select>
+      </div>
+      <p class="muted small">Smart Auto-Adjust uses bisection + telemetry + crash history. See the Tune Theater for live progress.</p>
     </div>
 
     <div class="actions">
