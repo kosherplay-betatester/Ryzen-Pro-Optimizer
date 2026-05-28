@@ -582,6 +582,45 @@ Register-Route -Method GET -Path '/api/status' -Handler {
         $state = Get-CurrentState
     }
 
+    # Smart Tune driver: if a Smart Tune is running, do one probe tick.
+    # This is intentionally driven from /api/status (the 1Hz browser
+    # poll) so the server stays single-threaded and request handlers
+    # are never blocked on a long-running CoreCycler subprocess - each
+    # tick spawns CoreCycler synchronously but the next /api/status
+    # only fires after the user's browser re-polls.
+    $tuneState = Get-SmartTuneState -SinceSeqId 0
+    if ($tuneState.status -eq 'RUNNING') {
+        $probeFn = {
+            param($cand)
+            $rt = $script:Tune.Policy.probeRuntimeMin
+            $timeout = [int]($rt * 60 * 2)   # 2x runtime as hard timeout
+            Invoke-Probe -RepoRoot $RepoRoot -ScopeCores $script:Tune.Scopes[$script:Tune.CurrentIdx].cores `
+                -TotalCores $cpu.Cores -ProbeRuntimeMin $rt -TimeoutSeconds $timeout `
+                -TickCallback { (Get-SafetyState).newAbort }
+        }.GetNewClosure()
+        $applyFn = {
+            param($cand)
+            $all = New-Object 'int[]' $cpu.Cores
+            $scope = $script:Tune.Scopes[$script:Tune.CurrentIdx]
+            # Read current, then overwrite only this scope's cores
+            $current = Get-AllCoreCo -CoreCount $cpu.Cores
+            for ($i = 0; $i -lt $cpu.Cores; $i++) { $all[$i] = $current[$i] }
+            foreach ($c in $scope.cores) { $all[$c] = $cand }
+            Save-PanicRevertState -Values $all -Reason "SmartTune $($scope.id) probe CO=$cand"
+            Set-AllCoreCo -Values $all
+        }.GetNewClosure()
+        $headroomFn = {
+            $snap = if ($telemetryReady) { Read-TelemetrySnapshot } else { $null }
+            Get-TelemetryHeadroom -Snapshot $snap -MaxTempC 95 -MaxVid 1.45
+        }.GetNewClosure()
+        $continued = Step-SmartTune -ProbeFn $probeFn -ApplyFn $applyFn -HeadroomFn $headroomFn -MaxProbesPerScope 12
+        if (-not $continued) {
+            Disable-SafetyGuard
+            Clear-PanicRevertState
+            Set-CurrentState -NewState 'REPORTING' -Force
+        }
+    }
+
     if ($state.state -eq 'TESTING' -or $state.state -eq 'STOPPING') {
         $live = Get-LiveStatus
         # Snapshot for peak tracking + safety inspection while testing.
@@ -601,6 +640,7 @@ Register-Route -Method GET -Path '/api/status' -Handler {
             bodyguardActive = (Test-WheaWatcherActive)
             safetyGuard = (Get-SafetyState)
             panicRevertPending = ($null -ne $script:PendingPanicRevert)
+            smartTune = (Get-SmartTuneState -SinceSeqId 0)   # NEW
         }
     }
 }
