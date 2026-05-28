@@ -46,3 +46,58 @@ function Read-HistoryEntries {
     }
     , @($out.ToArray())
 }
+
+# "Crash floor" = the shallowest (closest to zero) failure value we've
+# ever seen for this scope on this CPU. The orchestrator never probes
+# at-or-below this value on the same scope in future sessions - that's
+# how we accumulate guard rails over time.
+function Get-KnownCrashFloor {
+    param(
+        [Parameter(Mandatory)][string]$Path,
+        [Parameter(Mandatory)][string]$CpuModel,
+        [Parameter(Mandatory)][string]$Scope
+    )
+    $all = Read-HistoryEntries -Path $Path -CpuModel $CpuModel
+    $entries = @($all | Where-Object {
+        $_.scope -eq $Scope -and $_.result -in 'FAIL_P95','FAIL_WHEA','ABORT_CRASH','TIMEOUT'
+    })
+    if ($entries.Count -eq 0) { return $null }
+    # Shallowest = max value for undervolt (closer to zero)
+    [int](($entries | Measure-Object -Property value -Maximum).Maximum)
+}
+
+# "Stable ceiling" = the deepest (furthest from zero) value we've ever
+# seen PASS for this scope. Used to seed the next session - we can
+# start the search there with high confidence.
+function Get-KnownStableCeiling {
+    param(
+        [Parameter(Mandatory)][string]$Path,
+        [Parameter(Mandatory)][string]$CpuModel,
+        [Parameter(Mandatory)][string]$Scope
+    )
+    $all = Read-HistoryEntries -Path $Path -CpuModel $CpuModel
+    $entries = @($all | Where-Object {
+        $_.scope -eq $Scope -and $_.result -eq 'PASS'
+    })
+    if ($entries.Count -eq 0) { return $null }
+    # Deepest = min value for undervolt (more negative)
+    [int](($entries | Measure-Object -Property value -Minimum).Minimum)
+}
+
+# Confidence = PASS count minus FAIL count at exactly this value.
+# Drives the UI's "locked -18 with confidence 7" badge.
+function Get-Confidence {
+    param(
+        [Parameter(Mandatory)][string]$Path,
+        [Parameter(Mandatory)][string]$CpuModel,
+        [Parameter(Mandatory)][string]$Scope,
+        [Parameter(Mandatory)][int]$Value
+    )
+    $all = Read-HistoryEntries -Path $Path -CpuModel $CpuModel
+    $entries = @($all | Where-Object {
+        $_.scope -eq $Scope -and $_.value -eq $Value
+    })
+    $passes = @($entries | Where-Object { $_.result -eq 'PASS' }).Count
+    $fails  = @($entries | Where-Object { $_.result -in 'FAIL_P95','FAIL_WHEA','ABORT_CRASH','TIMEOUT' }).Count
+    $passes - $fails
+}
