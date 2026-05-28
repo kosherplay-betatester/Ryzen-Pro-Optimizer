@@ -128,12 +128,34 @@ function Install-CoreCycler {
     Write-Host "CoreCycler $($release.tag_name) installed successfully." -ForegroundColor Green
 }
 
+function Test-LhmCompatible {
+    # Returns $true if the installed DLL targets a runtime we can actually load
+    # under PowerShell 5.1 (i.e. .NET Framework 4.x, NOT .NET 10+).
+    $target = Join-Path $VendorDir 'LibreHardwareMonitorLib.dll'
+    if (-not (Test-Path $target)) { return $false }
+    try {
+        $bytes = [IO.File]::ReadAllBytes($target)
+        # Search the assembly for the framework target marker bytes
+        $text = [Text.Encoding]::ASCII.GetString($bytes)
+        if ($text -match '\.NETCoreApp,Version=v10\.0|\.NETCoreApp,Version=v9\.|\.NETCoreApp,Version=v8\.|\.NET 10\.0') {
+            return $false  # too new for PS 5.1 .NET Framework host
+        }
+        return $true
+    } catch {
+        return $false
+    }
+}
+
 function Install-LibreHardwareMonitor {
     if (-not (Test-Path $VendorDir)) { New-Item -ItemType Directory -Path $VendorDir | Out-Null }
     $target = Join-Path $VendorDir 'LibreHardwareMonitorLib.dll'
-    if (Test-Path $target) {
-        Write-Host "LibreHardwareMonitor already installed."
+    if ((Test-Path $target) -and (Test-LhmCompatible)) {
+        Write-Host "LibreHardwareMonitor already installed (compatible build)."
         return
+    }
+    if (Test-Path $target) {
+        Write-Host "Existing LibreHardwareMonitor build is incompatible with this PowerShell - replacing..."
+        Get-ChildItem -Path $VendorDir -Filter '*.dll' | Remove-Item -Force -ErrorAction SilentlyContinue
     }
 
     if (-not (Test-Path $CacheDir)) { New-Item -ItemType Directory -Path $CacheDir | Out-Null }
@@ -141,7 +163,16 @@ function Install-LibreHardwareMonitor {
     Write-Host "Locating latest LibreHardwareMonitor release..."
     $lhmApi = 'https://api.github.com/repos/LibreHardwareMonitor/LibreHardwareMonitor/releases/latest'
     $lhmRelease = Invoke-RestMethod -Uri $lhmApi -Headers @{ 'User-Agent' = 'Ryzen-Pro-Optimizer-Installer' }
-    $asset = $lhmRelease.assets | Where-Object { $_.name -match '\.zip$' } | Select-Object -First 1
+    # LHM ships two zips: 'LibreHardwareMonitor.NET.10.zip' (requires .NET 10 runtime)
+    # and 'LibreHardwareMonitor.zip' (.NET Framework 4.7.2 - works with PowerShell 5.1).
+    # Prefer the .NET Framework build; .NET 10 build fails to load in PS 5.1.
+    $asset = $lhmRelease.assets | Where-Object { $_.name -match '^LibreHardwareMonitor\.zip$' } | Select-Object -First 1
+    if (-not $asset) {
+        $asset = $lhmRelease.assets | Where-Object { $_.name -match '\.zip$' -and $_.name -notmatch 'NET\.?\d|net\d' } | Select-Object -First 1
+    }
+    if (-not $asset) {
+        $asset = $lhmRelease.assets | Where-Object { $_.name -match '\.zip$' } | Select-Object -First 1
+    }
     if (-not $asset) { throw "No zip asset in LibreHardwareMonitor release" }
 
     $zipPath = Join-Path $CacheDir "lhm-$($lhmRelease.tag_name).zip"
@@ -192,23 +223,22 @@ function Install-PawnIo {
     if (-not (Test-Path $CacheDir)) { New-Item -ItemType Directory -Path $CacheDir | Out-Null }
 
     Write-Host "Locating latest PawnIO release..."
-    $pawnApi = 'https://api.github.com/repos/namazso/PawnIO/releases/latest'
+    # Official PawnIO releases live in namazso/PawnIO.Setup (not namazso/PawnIO)
+    $pawnApi = 'https://api.github.com/repos/namazso/PawnIO.Setup/releases/latest'
     try {
         $pawnRelease = Invoke-RestMethod -Uri $pawnApi -Headers @{ 'User-Agent' = 'Ryzen-Pro-Optimizer-Installer' }
     } catch {
-        throw "Failed to query PawnIO releases: $($_.Exception.Message)"
+        throw "Failed to query PawnIO.Setup releases: $($_.Exception.Message)"
     }
 
-    # Prefer MSI; fall back to .exe installer
-    $asset = $pawnRelease.assets | Where-Object { $_.name -match '\.msi$' } | Select-Object -First 1
-    $isMsi = $true
+    $asset = $pawnRelease.assets | Where-Object { $_.name -match '_setup\.exe$|Setup\.exe$|\.msi$' } | Select-Object -First 1
     if (-not $asset) {
-        $asset = $pawnRelease.assets | Where-Object { $_.name -match 'setup.*\.exe$|installer.*\.exe$|PawnIO.*\.exe$' } | Select-Object -First 1
-        $isMsi = $false
+        $asset = $pawnRelease.assets | Where-Object { $_.name -match '\.exe$' } | Select-Object -First 1
     }
     if (-not $asset) {
-        throw "No MSI or installer .exe asset in PawnIO release $($pawnRelease.tag_name)"
+        throw "No installer asset in PawnIO.Setup release $($pawnRelease.tag_name)"
     }
+    $isMsi = $asset.name -match '\.msi$'
 
     $ext = if ($isMsi) { 'msi' } else { 'exe' }
     $installerPath = Join-Path $CacheDir "pawnio-$($pawnRelease.tag_name).$ext"
@@ -221,16 +251,20 @@ function Install-PawnIo {
     if ($isMsi) {
         $proc = Start-Process -FilePath 'msiexec.exe' -ArgumentList @('/i', "`"$installerPath`"", '/quiet', '/norestart') -Wait -PassThru
     } else {
-        # Try common silent flags; if installer is opinionated, fall through to interactive
-        $proc = Start-Process -FilePath $installerPath -ArgumentList @('/S', '/silent', '/quiet') -Wait -PassThru
+        # PawnIO setup is NSIS-based; /S is the standard silent flag
+        $proc = Start-Process -FilePath $installerPath -ArgumentList @('/S') -Wait -PassThru
+        if ($proc.ExitCode -ne 0) {
+            Write-Host "Silent install returned $($proc.ExitCode); retrying with /SILENT..."
+            $proc = Start-Process -FilePath $installerPath -ArgumentList @('/SILENT') -Wait -PassThru
+        }
     }
     if ($proc.ExitCode -ne 0) {
         throw "PawnIO installer exited with code $($proc.ExitCode). Try running '$installerPath' manually."
     }
 
-    Start-Sleep -Seconds 2  # give the service time to register
+    Start-Sleep -Seconds 3
     if (-not (Test-PawnIoInstalled)) {
-        throw "PawnIO installer ran but the PawnIO service is not detected. Try installing manually from $($asset.browser_download_url)"
+        throw "PawnIO installer reported success but the PawnIO service is not detected. Try running '$installerPath' interactively."
     }
     Write-Host "PawnIO installed successfully." -ForegroundColor Green
 }
