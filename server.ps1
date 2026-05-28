@@ -51,9 +51,44 @@ try {
 # Last report cache
 $script:LastReport = $null
 
+# Heartbeat tracking: when browser stops pinging, server reverts CO and exits
+$script:LastHeartbeat = [DateTime]::Now
+$script:ShutdownRequested = $false
+$script:HeartbeatTimeoutSeconds = 20
+
 # Initialize WHEA Bodyguard (best effort; needs admin)
 Initialize-WheaWatcher -RepoRoot $RepoRoot
 $wheaActive = Start-WheaWatcher
+
+# Graceful shutdown: revert CO, stop test, close listener
+function Invoke-GracefulShutdown {
+    Write-Log INFO "Graceful shutdown initiated"
+    Write-Host ""
+    Write-Host "Shutting down — reverting CO and cleaning up..." -ForegroundColor Yellow
+
+    # If a test is running, stop it
+    if ($runnerReady -and (Test-CoreCyclerRunning)) {
+        try { Stop-CoreCyclerRun } catch { Write-Log WARN "Stop runner failed: $($_.Exception.Message)" }
+    }
+
+    # Revert CO to launch values (or zero if no snapshot)
+    if ($coReady) {
+        try {
+            if ($null -ne $launchSnapshot) {
+                Set-AllCoreCo -Values $launchSnapshot
+                Write-Host "CO reverted to launch values: $($launchSnapshot -join ',')" -ForegroundColor Green
+            } else {
+                Reset-AllCoreCo -CoreCount $cpu.Cores
+                Write-Host "CO reset to 0 (no launch snapshot was available)" -ForegroundColor Yellow
+            }
+        } catch {
+            Write-Log ERROR "CO revert failed: $($_.Exception.Message)"
+            Write-Host "WARNING: Failed to revert CO. Reboot to restore BIOS values." -ForegroundColor Red
+        }
+    }
+
+    $script:ShutdownRequested = $true
+}
 
 # Initialize CO tool (best effort — server can still run if missing, just shows error)
 $coReady = $false
@@ -266,7 +301,18 @@ Register-Route -Method POST -Path '/api/test/stop' -Handler {
     }
 }
 
+Register-Route -Method POST -Path '/api/heartbeat' -Handler {
+    $script:LastHeartbeat = [DateTime]::Now
+    @{ ok = $true; data = @{ timeout = $script:HeartbeatTimeoutSeconds } }
+}
+
+Register-Route -Method POST -Path '/api/shutdown' -Handler {
+    Invoke-GracefulShutdown
+    @{ ok = $true; data = @{ shuttingDown = $true } }
+}
+
 Register-Route -Method GET -Path '/api/status' -Handler {
+    $script:LastHeartbeat = [DateTime]::Now   # any status call counts as a heartbeat too
     $state = Get-CurrentState
     $live = $null
     $whea = Get-WheaEvents
@@ -364,12 +410,35 @@ $listener = Start-HttpServer
 $url = "http://127.0.0.1:$(Get-ListenerPort)/"
 try { Start-Process $url } catch { Write-Host "Open this URL manually: $url" }
 
+# Heartbeat tick callback: invoked every 1s by the server loop. Returns $true to stop.
+$tickCallback = {
+    if ($script:ShutdownRequested) {
+        Write-Log INFO "Shutdown was requested - exiting server loop"
+        return $true
+    }
+    $silence = ([DateTime]::Now - $script:LastHeartbeat).TotalSeconds
+    if ($silence -gt $script:HeartbeatTimeoutSeconds) {
+        Write-Host ""
+        Write-Host "Browser stopped responding for $([math]::Round($silence,0))s - assuming closed." -ForegroundColor Yellow
+        Invoke-GracefulShutdown
+        return $true
+    }
+    return $false
+}
+
 try {
-    Invoke-ServerLoop -Listener $listener -WebRoot (Join-Path $PSScriptRoot 'web')
+    Invoke-ServerLoop -Listener $listener -WebRoot (Join-Path $PSScriptRoot 'web') -TickCallback $tickCallback
 } finally {
+    if (-not $script:ShutdownRequested) {
+        # Reached here without an explicit graceful shutdown (e.g., Ctrl+C). Best-effort cleanup.
+        try { Invoke-GracefulShutdown } catch {}
+    }
     try { Stop-WheaWatcher } catch {}
     try { Close-Telemetry } catch {}
     try { $listener.Stop() } catch {}
     try { $listener.Close() } catch {}
     Write-Log INFO "Server stopped"
+    Write-Host ""
+    Write-Host "Goodbye." -ForegroundColor Cyan
+    Start-Sleep -Seconds 2
 }

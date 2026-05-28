@@ -93,13 +93,31 @@ function Read-JsonBody {
 }
 
 function Invoke-ServerLoop {
-    param($Listener, [string]$WebRoot)
+    param(
+        $Listener,
+        [string]$WebRoot,
+        [scriptblock]$TickCallback = $null
+    )
 
     while ($Listener.IsListening) {
+        # Use async GetContext with a poll-and-tick pattern so we can run
+        # heartbeat watchdog logic between requests.
+        $asyncResult = $Listener.BeginGetContext($null, $null)
+        while (-not $asyncResult.AsyncWaitHandle.WaitOne(1000)) {
+            if ($TickCallback) {
+                $stop = & $TickCallback
+                if ($stop) {
+                    try { $Listener.Stop() } catch {}
+                    return
+                }
+            }
+        }
         try {
-            $context = $Listener.GetContext()
+            $context = $Listener.EndGetContext($asyncResult)
         } catch [System.Net.HttpListenerException] {
             Write-Log WARN "Listener closed: $($_.Exception.Message)"
+            break
+        } catch [ObjectDisposedException] {
             break
         }
 
@@ -134,6 +152,15 @@ function Invoke-ServerLoop {
         } catch {
             Write-Log ERROR "Handler error: $($_.Exception.Message)"
             try { Send-JsonResponse -Context $context -Status 500 -Data @{ ok=$false; error=$_.Exception.Message } } catch {}
+        }
+
+        # After each request, run the tick callback to check for shutdown conditions
+        if ($TickCallback) {
+            $stop = & $TickCallback
+            if ($stop) {
+                try { $Listener.Stop() } catch {}
+                return
+            }
         }
     }
 }

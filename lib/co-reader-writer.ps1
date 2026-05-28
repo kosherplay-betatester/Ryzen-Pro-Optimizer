@@ -15,22 +15,41 @@ function Initialize-CoTool {
 
 function Get-CoToolPath { $script:RyzenSmuCli }
 
-# Parse ryzen-smu-cli --get-offsets-terse output into an int[]
-# Format observed: one integer per line, optionally with whitespace.
-# Some versions also use comma-separation on a single line.
+# Parse ryzen-smu-cli --get-offsets-terse output into an int[].
+# Per CoreCycler's reference implementation, the tool outputs:
+#   [preamble lines, possibly "Current PBO offsets:" header]
+#   -10,-10,-10,-10,-10,-10,-10,-10,-20,-20,-20,-20,-20,-20,-20,-20
+#   (possibly trailing empty line)
+# Strategy: take the LAST non-empty line, split by comma, parse each as int.
+# Fallback: if that yields nothing, scan all lines for any line that looks
+# like comma-separated integers (handles tool-version differences).
 function ConvertFrom-CoToolOutput {
     param([string]$Output, [int]$ExpectedCount)
-    $values = @()
-    foreach ($line in ($Output -split "`r?`n")) {
-        $trim = $line.Trim()
-        if ([string]::IsNullOrWhiteSpace($trim)) { continue }
-        # Split on comma or whitespace
-        foreach ($part in ($trim -split '[,\s]+' | Where-Object { $_ -ne '' })) {
-            if ($part -match '^-?\d+$') {
-                $values += [int]$part
-            }
+
+    $lines = @($Output -split "`r?`n" | ForEach-Object { $_.Trim() } | Where-Object { $_ -ne '' })
+
+    function _parseCommaLine([string]$line) {
+        $parts = $line -split ','
+        $ints = @($parts | Where-Object { $_ -match '^\s*-?\d+\s*$' } | ForEach-Object { [int]$_.Trim() })
+        # Require ALL comma-separated parts to be integers — otherwise this is not a data line
+        if ($ints.Count -eq $parts.Count -and $ints.Count -gt 0) { return $ints }
+        return $null
+    }
+
+    $values = $null
+    if ($lines.Count -gt 0) {
+        $values = _parseCommaLine $lines[-1]
+    }
+    if (-not $values) {
+        for ($i = $lines.Count - 1; $i -ge 0; $i--) {
+            $candidate = _parseCommaLine $lines[$i]
+            if ($candidate) { $values = $candidate; break }
         }
     }
+    if (-not $values) { $values = @() }
+
+    Write-Log DEBUG "CO parser: $($values.Count) values from $($lines.Count) lines. Raw: $($Output -replace "`r?`n", ' | ')"
+
     if ($ExpectedCount -gt 0 -and $values.Count -ne $ExpectedCount) {
         Write-Log WARN "CO read returned $($values.Count) values, expected $ExpectedCount. Raw output: $Output"
     }
@@ -40,20 +59,48 @@ function ConvertFrom-CoToolOutput {
 function Get-AllCoreCo {
     param([int]$CoreCount)
     if (-not $script:RyzenSmuCli) { throw "Initialize-CoTool must be called first" }
-    $output = & $script:RyzenSmuCli --get-offsets-terse 2>&1
-    if ($LASTEXITCODE -ne 0) {
-        $msg = "ryzen-smu-cli --get-offsets-terse failed (exit $LASTEXITCODE): $output"
+
+    # Use System.Diagnostics.Process for proper stdout/stderr separation
+    # (matches CoreCycler's approach and gives us cleaner output)
+    $psi = New-Object System.Diagnostics.ProcessStartInfo
+    $psi.FileName = $script:RyzenSmuCli
+    $psi.Arguments = '--get-offsets-terse'
+    $psi.UseShellExecute = $false
+    $psi.RedirectStandardOutput = $true
+    $psi.RedirectStandardError = $true
+    $psi.CreateNoWindow = $true
+
+    $proc = New-Object System.Diagnostics.Process
+    $proc.StartInfo = $psi
+    $null = $proc.Start()
+    $stdOut = $proc.StandardOutput.ReadToEnd()
+    $stdErr = $proc.StandardError.ReadToEnd()
+    if (-not $proc.WaitForExit(5000)) {
+        try { $proc.Kill() } catch {}
+        throw "ryzen-smu-cli --get-offsets-terse timed out after 5s"
+    }
+    $exitCode = $proc.ExitCode
+    $proc.Dispose()
+
+    if ($exitCode -ne 0) {
+        $msg = "ryzen-smu-cli --get-offsets-terse failed (exit $exitCode). STDERR: $stdErr STDOUT: $stdOut"
         Write-Log ERROR $msg
         throw $msg
     }
-    $values = ConvertFrom-CoToolOutput -Output ([string]::Join("`n", @($output))) -ExpectedCount $CoreCount
-    if ($values.Count -lt $CoreCount) {
-        # Pad with zeros to expected size as a safety
-        $padded = New-Object 'int[]' $CoreCount
-        for ($i = 0; $i -lt $values.Count; $i++) { $padded[$i] = $values[$i] }
-        $values = $padded
-    } elseif ($values.Count -gt $CoreCount) {
-        $values = $values[0..($CoreCount - 1)]
+
+    if ([string]::IsNullOrWhiteSpace($stdOut)) {
+        $msg = "ryzen-smu-cli returned empty output. STDERR: $stdErr"
+        Write-Log ERROR $msg
+        throw $msg
+    }
+
+    $values = ConvertFrom-CoToolOutput -Output $stdOut -ExpectedCount $CoreCount
+
+    if ($values.Count -ne $CoreCount) {
+        # No silent padding - surface the real problem so we can fix the parser
+        $msg = "CO read returned $($values.Count) values but expected $CoreCount. The tool's output format may differ from what's parsed. Raw output: $stdOut"
+        Write-Log ERROR $msg
+        throw $msg
     }
     , $values
 }
@@ -66,9 +113,29 @@ function Set-AllCoreCo {
     }
     $arg = ($Values -join ',')
     Write-Log INFO "Applying CO: $arg"
-    $output = & $script:RyzenSmuCli --offset $arg 2>&1
-    if ($LASTEXITCODE -ne 0) {
-        $msg = "ryzen-smu-cli --offset failed (exit $LASTEXITCODE): $output"
+
+    $psi = New-Object System.Diagnostics.ProcessStartInfo
+    $psi.FileName = $script:RyzenSmuCli
+    $psi.Arguments = "--offset $arg"
+    $psi.UseShellExecute = $false
+    $psi.RedirectStandardOutput = $true
+    $psi.RedirectStandardError = $true
+    $psi.CreateNoWindow = $true
+
+    $proc = New-Object System.Diagnostics.Process
+    $proc.StartInfo = $psi
+    $null = $proc.Start()
+    $stdOut = $proc.StandardOutput.ReadToEnd()
+    $stdErr = $proc.StandardError.ReadToEnd()
+    if (-not $proc.WaitForExit(5000)) {
+        try { $proc.Kill() } catch {}
+        throw "ryzen-smu-cli --offset timed out after 5s"
+    }
+    $exitCode = $proc.ExitCode
+    $proc.Dispose()
+
+    if ($exitCode -ne 0) {
+        $msg = "ryzen-smu-cli --offset failed (exit $exitCode). STDERR: $stdErr STDOUT: $stdOut"
         Write-Log ERROR $msg
         throw $msg
     }

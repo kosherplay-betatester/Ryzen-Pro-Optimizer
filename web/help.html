@@ -33,6 +33,10 @@
 <h3>Settings reset on reboot</h3>
 <p>Anything you apply here is temporary. After a reboot, your BIOS Curve Optimizer values return. Once you've found your sweet spot, write those values into BIOS for permanent application.</p>
 
+<h3>Closing the tab / browser reverts CO</h3>
+<p>When you close this browser tab (or the whole browser), the server detects it (heartbeat timeout, plus a sendBeacon on close) and does three things: stops any running stress test, reverts your Curve Optimizer settings to the values that were active when you opened the app (typically your BIOS values), and shuts itself down. The browser will also show a "Leave this site?" prompt so accidental closes don't lose your in-progress experiments.</p>
+<p>If you want to keep your applied values active while doing other things in Windows: keep the tab open in the background. If you genuinely want to commit your values across browser sessions, set them in BIOS.</p>
+
 <h2>Advanced</h2>
 
 <h3>Auto-Adjust mode</h3>

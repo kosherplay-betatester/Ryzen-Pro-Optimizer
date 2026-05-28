@@ -414,6 +414,30 @@ document.addEventListener('keydown', e => {
   if (e.key === 'Escape') resetCo();
 });
 
+// Heartbeat — server uses absence of pings to detect closed browser and shut down
+async function sendHeartbeat() {
+  try { await fetch('/api/heartbeat', { method: 'POST' }); } catch (e) { /* server may be gone */ }
+}
+
+// Confirm-on-close prompt
+window.addEventListener('beforeunload', (e) => {
+  // Modern browsers ignore custom messages but still show a generic warning when returnValue is set
+  e.preventDefault();
+  e.returnValue = 'Closing this tab will revert your Curve Optimizer settings to launch values and stop the server. Continue?';
+  return e.returnValue;
+});
+
+// On actual close, send a sendBeacon to trigger graceful shutdown immediately
+window.addEventListener('pagehide', () => {
+  try {
+    if (navigator.sendBeacon) {
+      navigator.sendBeacon('/api/shutdown', '');
+    } else {
+      fetch('/api/shutdown', { method: 'POST', keepalive: true });
+    }
+  } catch (e) { /* fire and forget */ }
+});
+
 document.addEventListener('DOMContentLoaded', async () => {
   try {
     await loadCpu();
@@ -421,8 +445,10 @@ document.addEventListener('DOMContentLoaded', async () => {
     await loadProfiles();
     pollTelemetry();
     pollStatus();
+    sendHeartbeat();
     setInterval(pollTelemetry, POLL_INTERVAL_ACTIVE_MS);
     setInterval(pollStatus, POLL_INTERVAL_ACTIVE_MS);
+    setInterval(sendHeartbeat, 5000);  // every 5s
   } catch (e) {
     document.body.insertAdjacentHTML('beforeend', `<div class="card warn">Failed to initialize: ${e.message}</div>`);
   }

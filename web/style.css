@@ -203,9 +203,15 @@ h3 { font-size: 0.9rem; margin: 1rem 0 0.4rem; color: var(--text); }
   background: var(--card);
   color: var(--muted);
   text-align: center;
-  padding: 0.6rem;
+  padding: 0.4rem 0.6rem;
   border-top: 1px solid var(--border);
   font-size: 0.85rem;
   z-index: 50;
+  line-height: 1.4;
+}
+.footer-secondary {
+  font-size: 0.75rem;
+  opacity: 0.75;
+  margin-top: 0.1rem;
 }
 kbd { background: var(--border); padding: 0.1rem 0.4rem; border-radius: 3px; font-family: ui-monospace, Consolas, monospace; font-size: 0.85em; }
