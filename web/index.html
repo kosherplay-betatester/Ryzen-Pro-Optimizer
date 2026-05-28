@@ -44,28 +44,47 @@
   </section>
 
   <section class="card hidden" id="test-card">
-    <h2>2. Test Stability</h2>
+    <h2>2. Test &amp; Autotune Stability</h2>
+
+    <div class="co-input"><label>Mode:</label>
+      <label class="inline-radio"><input type="radio" name="testMode" value="manual" checked> Manual test</label>
+      <label class="inline-radio"><input type="radio" name="testMode" value="auto"> Auto-Adjust</label>
+    </div>
+
+    <div id="mode-info-manual" class="info-box">
+      <strong>Manual test</strong> — runs your current CO values through the selected stress test. If any core errors, the report tells you which one and suggests how much to dial back. You stay in the driver's seat.
+    </div>
+
+    <div id="mode-info-auto" class="info-box hidden">
+      <strong>Auto-Adjust (autotuning)</strong> — CoreCycler runs the stress test and <em>automatically</em> bumps each core's CO offset upward (less negative) whenever that core errors, then re-tests it. Walks each core to its individual stable edge. Set how far it can back off (Max value) and how aggressively it steps (Increment).
+      <ul class="info-list">
+        <li><strong>Starting values</strong> = your current per-core CO (read from SMU at test start)</li>
+        <li><strong>Max value</strong> = the least-negative offset Auto-Adjust is allowed to reach. <code>0</code> means "give up at neutral"; <code>5</code> would allow positive offset (rarely useful, usually risky)</li>
+        <li><strong>Increment</strong> = how many points to add per error. <code>1</code> is precise but slow; <code>3–5</code> finds the rough edge faster</li>
+        <li>Useful when you want to walk away and let it find each core's edge autonomously — common end-state: each core at its individual stable minimum</li>
+        <li><strong>Watch the live status</strong> — it can take hours per core if errors come early in a long iteration</li>
+      </ul>
+    </div>
+
     <div class="co-input">
-      <label>Test:</label>
+      <label>Stress test:</label>
       <select id="test-mode">
-        <option value="SSE">Prime95 SSE</option>
+        <option value="SSE">Prime95 SSE (recommended for CO)</option>
         <option value="AVX2">Prime95 AVX2</option>
         <option value="AVX512">Prime95 AVX512</option>
       </select>
     </div>
     <div class="co-input"><label>Cycles:</label><input type="number" id="iterations" value="1" min="1" max="10000"></div>
-    <p class="muted small">Default 1 cycle. <strong>3+ cycles recommended</strong> for confident stability testing.</p>
-    <div class="co-input"><label>Mode:</label>
-      <label class="inline-radio"><input type="radio" name="testMode" value="manual" checked> Manual</label>
-      <label class="inline-radio"><input type="radio" name="testMode" value="auto"> Auto-Adjust (advanced)</label>
-    </div>
+    <p class="muted small">Default 1 cycle. <strong>3+ cycles recommended</strong> for confident stability. Auto-Adjust typically benefits from longer runs (10+) so each core gets multiple chances.</p>
+
     <div id="auto-options" class="hidden">
       <div class="co-input"><label>Max value (least-negative ceiling):</label><input type="number" id="auto-max" value="0" min="-50" max="50"></div>
-      <div class="co-input"><label>Increment by:</label><input type="number" id="auto-inc" value="1" min="1" max="5"></div>
+      <div class="co-input"><label>Increment by (points per error):</label><input type="number" id="auto-inc" value="1" min="1" max="5"></div>
     </div>
+
     <div class="actions">
-      <button id="start-test" class="primary">▶ Start Test</button>
-      <button id="stop-test" class="danger hidden">■ Stop test</button>
+      <button id="start-test" class="primary">▶ Start</button>
+      <button id="stop-test" class="danger hidden">■ Stop</button>
     </div>
   </section>
 
