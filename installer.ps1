@@ -15,6 +15,59 @@ function Get-LatestCoreCyclerRelease {
     Invoke-RestMethod -Uri $ReleasesApi -Headers $headers
 }
 
+# Fast HTTP download: bypasses Invoke-WebRequest's slow progress-bar rendering
+# (a known PowerShell perf bug that throttles downloads by 10-50x).
+# Uses System.Net.Http.HttpClient with streaming + buffered file copy.
+function Invoke-FastDownload {
+    param(
+        [Parameter(Mandatory)][string]$Uri,
+        [Parameter(Mandatory)][string]$OutFile
+    )
+    Add-Type -AssemblyName System.Net.Http -ErrorAction SilentlyContinue
+    $handler = New-Object System.Net.Http.HttpClientHandler
+    $handler.AllowAutoRedirect = $true
+    $client = New-Object System.Net.Http.HttpClient($handler)
+    $client.Timeout = [TimeSpan]::FromMinutes(15)
+    $client.DefaultRequestHeaders.UserAgent.ParseAdd('Ryzen-Pro-Optimizer-Installer')
+
+    try {
+        $response = $client.GetAsync($Uri, [System.Net.Http.HttpCompletionOption]::ResponseHeadersRead).GetAwaiter().GetResult()
+        if (-not $response.IsSuccessStatusCode) {
+            throw "HTTP $([int]$response.StatusCode) from $Uri"
+        }
+        $total = $response.Content.Headers.ContentLength
+        $totalMb = if ($total) { [math]::Round($total / 1MB, 1) } else { $null }
+
+        $netStream = $response.Content.ReadAsStreamAsync().GetAwaiter().GetResult()
+        $fileStream = [IO.File]::OpenWrite($OutFile)
+        try {
+            $buffer = New-Object byte[] 81920
+            $totalRead = 0L
+            $lastReportMb = -1.0
+            while (($n = $netStream.Read($buffer, 0, $buffer.Length)) -gt 0) {
+                $fileStream.Write($buffer, 0, $n)
+                $totalRead += $n
+                $readMb = [math]::Round($totalRead / 1MB, 1)
+                if ($totalMb -and ($readMb - $lastReportMb) -ge 5) {
+                    $pct = [math]::Round(100 * $totalRead / $total, 0)
+                    Write-Host ("  {0,5} MB / {1} MB  ({2}%)" -f $readMb, $totalMb, $pct)
+                    $lastReportMb = $readMb
+                } elseif (-not $totalMb -and ($readMb - $lastReportMb) -ge 5) {
+                    Write-Host ("  {0,5} MB downloaded" -f $readMb)
+                    $lastReportMb = $readMb
+                }
+            }
+        } finally {
+            $fileStream.Dispose()
+            $netStream.Dispose()
+        }
+        Write-Host "  Download complete: $(Split-Path -Leaf $OutFile)" -ForegroundColor Green
+    } finally {
+        $client.Dispose()
+        $handler.Dispose()
+    }
+}
+
 function Get-CoreCyclerZipUrl {
     param($Release)
     $asset = $Release.assets | Where-Object { $_.name -match '\.zip$' } | Select-Object -First 1
@@ -37,12 +90,7 @@ function Install-CoreCycler {
 
     if (-not (Test-Path $zipPath)) {
         Write-Host "Downloading from $url"
-        # Use BITS for resumable download if available
-        try {
-            Start-BitsTransfer -Source $url -Destination $zipPath -ErrorAction Stop
-        } catch {
-            Invoke-WebRequest -Uri $url -OutFile $zipPath -Headers @{ 'User-Agent' = 'Ryzen-Pro-Optimizer-Installer' }
-        }
+        Invoke-FastDownload -Uri $url -OutFile $zipPath
     }
 
     $extractDir = Join-Path $CacheDir "extract-$($release.tag_name)"
@@ -99,11 +147,7 @@ function Install-LibreHardwareMonitor {
     $zipPath = Join-Path $CacheDir "lhm-$($lhmRelease.tag_name).zip"
     if (-not (Test-Path $zipPath)) {
         Write-Host "Downloading LibreHardwareMonitor $($lhmRelease.tag_name)..."
-        try {
-            Start-BitsTransfer -Source $asset.browser_download_url -Destination $zipPath -ErrorAction Stop
-        } catch {
-            Invoke-WebRequest -Uri $asset.browser_download_url -OutFile $zipPath -Headers @{ 'User-Agent' = 'Ryzen-Pro-Optimizer-Installer' }
-        }
+        Invoke-FastDownload -Uri $asset.browser_download_url -OutFile $zipPath
     }
 
     $extract = Join-Path $CacheDir 'lhm-extract'
