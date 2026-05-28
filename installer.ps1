@@ -247,24 +247,29 @@ function Install-PawnIo {
         Invoke-FastDownload -Uri $asset.browser_download_url -OutFile $installerPath
     }
 
-    Write-Host "Installing PawnIO driver (this registers a Windows service)..." -ForegroundColor Cyan
+    Write-Host ""
+    Write-Host "===================================================================" -ForegroundColor Cyan
+    Write-Host "  PawnIO needs to be installed (one-time, kernel driver service)." -ForegroundColor Cyan
+    Write-Host "  A small wizard window will open - click through it to install." -ForegroundColor Cyan
+    Write-Host "  This installer accepts UAC and runs in about 5-10 seconds." -ForegroundColor Cyan
+    Write-Host "===================================================================" -ForegroundColor Cyan
+    Write-Host ""
+
     if ($isMsi) {
-        $proc = Start-Process -FilePath 'msiexec.exe' -ArgumentList @('/i', "`"$installerPath`"", '/quiet', '/norestart') -Wait -PassThru
+        $proc = Start-Process -FilePath 'msiexec.exe' -ArgumentList @('/i', "`"$installerPath`"") -Wait -PassThru
     } else {
-        # PawnIO setup is NSIS-based; /S is the standard silent flag
-        $proc = Start-Process -FilePath $installerPath -ArgumentList @('/S') -Wait -PassThru
-        if ($proc.ExitCode -ne 0) {
-            Write-Host "Silent install returned $($proc.ExitCode); retrying with /SILENT..."
-            $proc = Start-Process -FilePath $installerPath -ArgumentList @('/SILENT') -Wait -PassThru
-        }
+        # PawnIO_setup.exe uses non-standard arguments (/S, /SILENT both rejected
+        # with 'unknown argument' errors). Launching interactively - user clicks
+        # through the wizard. The installer is small and the wizard is short.
+        $proc = Start-Process -FilePath $installerPath -Wait -PassThru
     }
     if ($proc.ExitCode -ne 0) {
-        throw "PawnIO installer exited with code $($proc.ExitCode). Try running '$installerPath' manually."
+        Write-Host "PawnIO installer exited with code $($proc.ExitCode). Trying to continue..." -ForegroundColor Yellow
     }
 
     Start-Sleep -Seconds 3
     if (-not (Test-PawnIoInstalled)) {
-        throw "PawnIO installer reported success but the PawnIO service is not detected. Try running '$installerPath' interactively."
+        throw "PawnIO service was not detected after install. If you cancelled the wizard, run '$installerPath' manually."
     }
     Write-Host "PawnIO installed successfully." -ForegroundColor Green
 }
