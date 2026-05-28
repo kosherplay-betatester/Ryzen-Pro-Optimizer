@@ -263,3 +263,60 @@ function Test-CoreCyclerProbeResult {
     if (-not $ExitedCleanly) { return 'TIMEOUT' }
     'PASS'
 }
+
+# Invoke a single-iteration probe on one scope (a CCD-group or a single
+# core). Blocks until CoreCycler exits or TimeoutSeconds elapses, then
+# returns one of PASS/FAIL_P95/FAIL_WHEA/TIMEOUT. Wraps:
+#   1. New-CoreCyclerConfig (generate a single-iteration config)
+#   2. Start-CoreCyclerRun  (spawn the subprocess)
+#   3. wait loop with periodic safety inspection (caller supplies callback)
+#   4. classify result and return
+#
+# Parameters:
+#   $RepoRoot        - project root (passed to New-CoreCyclerConfig)
+#   $ScopeCores      - int[] of physical core indices to test (whole CCD or one core)
+#   $TotalCores      - total physical cores (passed to New-CoreCyclerConfig)
+#   $ProbeRuntimeMin - mode.probeRuntimeMin (sets runtimePerCore)
+#   $TimeoutSeconds  - how long to wait before forcing TIMEOUT
+#   $TickCallback    - optional scriptblock invoked once a second; if it
+#                      returns $true, probe is aborted as ABORT_SAFETY
+function Invoke-Probe {
+    param(
+        [Parameter(Mandatory)][string]$RepoRoot,
+        [Parameter(Mandatory)][int[]]$ScopeCores,
+        [Parameter(Mandatory)][int]$TotalCores,
+        [Parameter(Mandatory)][double]$ProbeRuntimeMin,
+        [Parameter(Mandatory)][int]$TimeoutSeconds,
+        [scriptblock]$TickCallback = $null
+    )
+    $rtFmt = "{0}m" -f [int][Math]::Max(1, [Math]::Round($ProbeRuntimeMin))
+    $cfg = New-CoreCyclerConfig -RepoRoot $RepoRoot `
+        -StressTestProgram 'PRIME95' -Mode 'SSE' -MaxIterations 1 `
+        -RuntimePerCore $rtFmt -CoresToTest $ScopeCores -TotalCores $TotalCores `
+        -EnableAutomaticAdjustment $false
+    Start-CoreCyclerRun -ConfigPath $cfg
+    $deadline = (Get-Date).AddSeconds($TimeoutSeconds)
+    $aborted = $false
+    while (Test-CoreCyclerRunning) {
+        Start-Sleep -Seconds 1
+        if ($TickCallback) {
+            if ((& $TickCallback)) { $aborted = $true; break }
+        }
+        if ((Get-Date) -gt $deadline) { break }
+    }
+    $cleanExit = (-not (Test-CoreCyclerRunning))
+    if (-not $cleanExit) {
+        try { Stop-CoreCyclerRun } catch {}
+    }
+    if ($aborted) { return 'ABORT_SAFETY' }
+    $logs = Get-LatestLogs
+    $ccLines = @()
+    $primeLines = @()
+    if ($logs.coreCyclerLog -and (Test-Path $logs.coreCyclerLog)) {
+        $ccLines = Get-Content -Path $logs.coreCyclerLog -ErrorAction SilentlyContinue
+    }
+    if ($logs.prime95Log -and (Test-Path $logs.prime95Log)) {
+        $primeLines = Get-Content -Path $logs.prime95Log -ErrorAction SilentlyContinue
+    }
+    Test-CoreCyclerProbeResult -LogLines $ccLines -PrimeLines $primeLines -ExitedCleanly $cleanExit
+}
