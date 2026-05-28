@@ -218,3 +218,90 @@ function Get-SmartTuneState {
         latestSeqId = (Get-CurrentNarrativeSeqId)
     }
 }
+
+# One orchestrator tick: drives ONE probe of the current scope.
+# Returns $true if there's more work, $false if the whole session is
+# done. Designed to be called from the HTTP status handler so the
+# server stays responsive between probes.
+function Step-SmartTune {
+    param(
+        [Parameter(Mandatory)][scriptblock]$ProbeFn,
+        [Parameter(Mandatory)][scriptblock]$ApplyFn,
+        [Parameter(Mandatory)][scriptblock]$HeadroomFn,
+        [int]$MaxProbesPerScope = 12
+    )
+    if ($script:Tune.Status -ne 'RUNNING') { return $false }
+    if ($script:Tune.Scopes.Count -eq 0)  { $script:Tune.Status = 'COMPLETED'; return $false }
+
+    # Advance to next pending scope if needed
+    if ($script:Tune.CurrentIdx -lt 0 -or
+        $script:Tune.CurrentIdx -ge $script:Tune.Scopes.Count -or
+        $script:Tune.Scopes[$script:Tune.CurrentIdx].status -in 'LOCKED','FAILED') {
+
+        $next = -1
+        for ($i = 0; $i -lt $script:Tune.Scopes.Count; $i++) {
+            if ($script:Tune.Scopes[$i].status -eq 'PENDING') { $next = $i; break }
+        }
+        if ($next -lt 0) {
+            $script:Tune.Status = 'COMPLETED'
+            Write-TunerNarrative -Icon 'lock' -Message 'All scopes locked. Smart Tune complete.'
+            Save-TuneSession -Path $script:Tune.SessionPath -Session (Get-SmartTuneState -SinceSeqId 0)
+            return $false
+        }
+        $script:Tune.CurrentIdx = $next
+        $sc = $script:Tune.Scopes[$next]
+        $sc | Add-Member -NotePropertyName scopeState -NotePropertyValue (
+            New-ScopeState -ScopeId $sc.id -IsVCache $sc.isVCache -SeedValue 0 -Policy $script:Tune.Policy
+        ) -Force
+        $sc.status = 'PROBING'
+        Write-TunerNarrative -Icon 'arrow' -Message "Starting scope $($sc.id)" -Payload @{ scope = $sc.id }
+    }
+
+    $cur = $script:Tune.Scopes[$script:Tune.CurrentIdx]
+    if ($cur.scopeState.probesCompleted -ge $MaxProbesPerScope) {
+        # Out of probe budget without convergence - mark FAILED and move on
+        $cur.status = 'FAILED'
+        Write-TunerNarrative -Icon 'warn' -Message "Scope $($cur.id) exceeded probe budget without converging"
+        Save-TuneSession -Path $script:Tune.SessionPath -Session (Get-SmartTuneState -SinceSeqId 0)
+        return $true
+    }
+
+    if (Test-ScopeConverged -ScopeState $cur.scopeState) {
+        $locked = Get-LockInValue -ScopeState $cur.scopeState -Policy $script:Tune.Policy
+        if ($null -ne $locked) {
+            $cur | Add-Member -NotePropertyName locked -NotePropertyValue $locked -Force
+            $cur.status = 'LOCKED'
+            Write-TunerNarrative -Icon 'lock' -Message "Locked $($cur.id) at $locked" -Payload @{ scope = $cur.id; value = $locked }
+        } else {
+            $cur.status = 'FAILED'
+            Write-TunerNarrative -Icon 'warn' -Message "Scope $($cur.id) failed to find a stable value in range"
+        }
+        Save-TuneSession -Path $script:Tune.SessionPath -Session (Get-SmartTuneState -SinceSeqId 0)
+        return $true
+    }
+
+    # Do one probe
+    $headroom = [double](& $HeadroomFn)
+    $cand = Get-NextCandidate -ScopeState $cur.scopeState -TelemetryHeadroom $headroom -Policy $script:Tune.Policy
+    Write-TunerNarrative -Icon 'arrow' -Message "Probe $($cur.scopeState.probesCompleted + 1) of $($cur.id): trying CO=$cand" -Payload @{ scope=$cur.id; value=$cand }
+    & $ApplyFn $cand
+    $result = & $ProbeFn
+    $cur.scopeState = Update-ScopeFromResult -ScopeState $cur.scopeState -Candidate $cand -Result $result
+
+    $icon = switch ($result) { 'PASS' {'pass'} 'FAIL_WHEA' {'warn'} default {'fail'} }
+    Write-TunerNarrative -Icon $icon -Message "$($cur.id) probe $($cur.scopeState.probesCompleted): $result at CO=$cand" -Payload @{ scope=$cur.id; value=$cand; result=$result }
+
+    # Append to history
+    if ($script:Tune.HistoryPath) {
+        Add-HistoryEntry -Path $script:Tune.HistoryPath -Entry @{
+            cpuModel  = $script:Tune.Cpu.Name
+            scope     = $cur.id
+            value     = $cand
+            result    = $result
+            mode      = $script:Tune.Mode
+            sessionId = $script:Tune.SessionId
+        }
+    }
+    Save-TuneSession -Path $script:Tune.SessionPath -Session (Get-SmartTuneState -SinceSeqId 0)
+    $true
+}

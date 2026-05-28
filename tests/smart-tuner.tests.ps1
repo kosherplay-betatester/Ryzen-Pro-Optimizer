@@ -200,3 +200,51 @@ Describe 'Tune session state machine' {
         $state.status | Should -BeIn 'IDLE','STOPPED'
     }
 }
+
+Describe 'Step-SmartTune' {
+    BeforeEach {
+        . "$PSScriptRoot\..\lib\smart-tuner-narrative.ps1"
+        . "$PSScriptRoot\..\lib\smart-tuner-history.ps1"
+        Clear-TunerNarrative
+        $script:tmpSess = [IO.Path]::GetTempFileName()
+        $script:tmpHist = [IO.Path]::GetTempFileName()
+        $cpu = [PSCustomObject]@{
+            Name='Test'; Cores=8; CcdCount=1; CoresPerCcd=8
+            IsDualCcd=$false; VCacheCcdIndex=$null
+        }
+        Start-SmartTune -Cpu $cpu -Mode 'daily-driver' -Direction 'undervolt' `
+            -SessionPath $script:tmpSess -HistoryPath $script:tmpHist
+    }
+    AfterEach {
+        Discard-SmartTune
+        Remove-Item $script:tmpSess -Force -ErrorAction SilentlyContinue
+        Remove-Item $script:tmpHist -Force -ErrorAction SilentlyContinue
+    }
+    It 'completes the only scope after a sequence of probes and transitions to COMPLETED' {
+        $script:results = @('PASS','PASS','PASS','FAIL_P95','PASS','FAIL_WHEA')
+        $script:i = 0
+        $probeFn = { $r = $script:results[$script:i]; $script:i = [Math]::Min($script:i+1, $script:results.Count-1); $r }
+        $applyFn = { param($v) }
+        $headroomFn = { 1.0 }
+        for ($t = 0; $t -lt 20; $t++) {
+            $cont = Step-SmartTune -ProbeFn $probeFn -ApplyFn $applyFn -HeadroomFn $headroomFn -MaxProbesPerScope 12
+            if (-not $cont) { break }
+        }
+        $state = Get-SmartTuneState -SinceSeqId 0
+        $state.status | Should -Be 'COMPLETED'
+        $state.scopes[0].status | Should -Match 'LOCKED|FAILED'
+    }
+    It 'writes history entries as probes complete' {
+        $script:results = @('PASS','PASS','FAIL_P95')
+        $script:i = 0
+        $probeFn = { $r = $script:results[$script:i]; $script:i = [Math]::Min($script:i+1, $script:results.Count-1); $r }
+        $applyFn = { param($v) }
+        $headroomFn = { 1.0 }
+        for ($t = 0; $t -lt 6; $t++) {
+            $cont = Step-SmartTune -ProbeFn $probeFn -ApplyFn $applyFn -HeadroomFn $headroomFn -MaxProbesPerScope 5
+            if (-not $cont) { break }
+        }
+        $lines = Get-Content $script:tmpHist -ErrorAction SilentlyContinue
+        $lines.Count | Should -BeGreaterThan 0
+    }
+}
