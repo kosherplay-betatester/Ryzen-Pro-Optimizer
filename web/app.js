@@ -7,6 +7,8 @@ const POLL_INTERVAL_IDLE_MS = 5000;
 let cpuInfo = null;
 let launchValues = null;
 let currentValues = null;
+let formInitialValues = null;  // What populates form inputs (defaults to currentValues; overridden by Load Profile)
+let loadedProfiles = [];
 let currentMode = 'all-cores';
 let lastWheaCount = 0;
 let stateName = 'IDLE';
@@ -88,27 +90,68 @@ async function loadCoValues() {
 function renderForm() {
   if (!cpuInfo) return;
   const form = document.getElementById('curve-form');
-  const initial = currentValues || launchValues || new Array(cpuInfo.Cores).fill(0);
+  const initial = formInitialValues || currentValues || launchValues || new Array(cpuInfo.Cores).fill(0);
   let html = '';
   if (currentMode === 'all-cores') {
     const v = initial[0];
-    html = `<div class="co-input"><label>All cores</label><input type="number" id="co-all" value="${v}" min="-50" max="50"></div>`;
+    const cur = currentValues ? currentValues[0] : null;
+    html = `<div class="co-input"><label>All cores</label><input type="number" id="co-all" value="${v}" min="-50" max="50">${cur != null ? `<span class="muted small">(current: ${cur})</span>` : ''}</div>`;
   } else if (currentMode === 'per-ccd') {
     for (let c = 0; c < cpuInfo.CcdCount; c++) {
       const start = c * cpuInfo.CoresPerCcd;
       const isVCache = cpuInfo.VCacheCcdIndex === c;
       const label = isVCache ? `CCD${c} (V-Cache)` : `CCD${c} (Standard)`;
       const v = initial[start];
-      html += `<div class="co-input"><label>${label}</label><input type="number" id="co-ccd${c}" value="${v}" min="-50" max="50"><span class="muted small">(current: ${v})</span></div>`;
+      const cur = currentValues ? currentValues[start] : null;
+      html += `<div class="co-input"><label>${label}</label><input type="number" id="co-ccd${c}" value="${v}" min="-50" max="50">${cur != null ? `<span class="muted small">(current: ${cur})</span>` : ''}</div>`;
     }
   } else {
     for (let i = 0; i < cpuInfo.Cores; i++) {
       const ccd = cpuInfo.IsDualCcd ? Math.floor(i / cpuInfo.CoresPerCcd) : 0;
       const v = initial[i];
-      html += `<div class="co-input"><label>Core ${i} (CCD${ccd})</label><input type="number" id="co-core${i}" value="${v}" min="-50" max="50"><span class="muted small">(current: ${v})</span></div>`;
+      const cur = currentValues ? currentValues[i] : null;
+      html += `<div class="co-input"><label>Core ${i} (CCD${ccd})</label><input type="number" id="co-core${i}" value="${v}" min="-50" max="50">${cur != null ? `<span class="muted small">(current: ${cur})</span>` : ''}</div>`;
     }
   }
   form.innerHTML = html;
+}
+
+// Expand a profile's stored values into a flat per-core array
+function expandProfileValues(profile) {
+  if (!cpuInfo) return null;
+  const arr = new Array(cpuInfo.Cores).fill(0);
+  if (!profile || !profile.values) return arr;
+  if (profile.mode === 'all-cores') {
+    const v = profile.values.all;
+    arr.fill(v);
+  } else if (profile.mode === 'per-ccd') {
+    for (let c = 0; c < cpuInfo.CcdCount; c++) {
+      const v = profile.values['ccd' + c];
+      const start = c * cpuInfo.CoresPerCcd;
+      for (let i = 0; i < cpuInfo.CoresPerCcd; i++) arr[start + i] = v;
+    }
+  } else if (profile.mode === 'per-core') {
+    for (let i = 0; i < cpuInfo.Cores; i++) {
+      arr[i] = profile.values[i] !== undefined ? profile.values[i] : 0;
+    }
+  }
+  return arr;
+}
+
+function loadProfileIntoForm(profileName) {
+  const p = loadedProfiles.find(x => x.name === profileName);
+  if (!p) { showToast('Profile not found', 'error'); return; }
+  // Switch mode tab
+  currentMode = p.mode;
+  document.querySelectorAll('.tab').forEach(t => {
+    t.classList.toggle('active', t.dataset.mode === p.mode);
+  });
+  // Override form initial values
+  formInitialValues = expandProfileValues(p);
+  renderForm();
+  // Scroll to curve card so user sees the loaded values
+  document.getElementById('curve-card').scrollIntoView({ behavior: 'smooth', block: 'start' });
+  showToast(`Loaded "${p.name}" — click Apply to write`, 'warn');
 }
 
 function collectValues() {
@@ -292,12 +335,14 @@ async function pollStatus() {
 async function loadProfiles() {
   try {
     const r = await fetchJson('/api/profiles');
+    loadedProfiles = r.data || [];
     const list = document.getElementById('profiles-list');
-    if (!r.data || r.data.length === 0) { list.innerHTML = '<p class="muted small">No profiles saved yet.</p>'; return; }
-    list.innerHTML = r.data.map(p => `
+    if (loadedProfiles.length === 0) { list.innerHTML = '<p class="muted small">No profiles saved yet.</p>'; return; }
+    list.innerHTML = loadedProfiles.map(p => `
       <div class="profile">
-        <span class="grow"><strong>${p.name}</strong> <span class="muted small">· ${p.mode} · ${p.cpuModel || ''}</span></span>
-        <button data-apply="${encodeURIComponent(p.name)}" class="primary">Apply</button>
+        <span class="grow"><strong>${p.name}</strong> <span class="muted small">· ${p.mode} · ${p.cpuModel || ''}${p.notes ? ' · ' + p.notes : ''}</span></span>
+        <button data-load="${encodeURIComponent(p.name)}" class="secondary" title="Load into form (no apply)">Load</button>
+        <button data-apply="${encodeURIComponent(p.name)}" class="primary" title="Apply immediately">Apply</button>
         <button data-delete="${encodeURIComponent(p.name)}" class="secondary" title="Delete">×</button>
       </div>`).join('');
   } catch (e) { /* ignore */ }
@@ -321,6 +366,7 @@ document.addEventListener('click', async e => {
     document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
     e.target.classList.add('active');
     currentMode = e.target.dataset.mode;
+    formInitialValues = null;  // user picked a mode manually — drop any loaded profile staging
     renderForm();
     return;
   }
@@ -349,9 +395,12 @@ document.addEventListener('click', async e => {
       break;
     }
   }
+  if (e.target.dataset && e.target.dataset.load) {
+    loadProfileIntoForm(decodeURIComponent(e.target.dataset.load));
+  }
   if (e.target.dataset && e.target.dataset.apply) {
     const r = await fetchJson('/api/profiles/' + e.target.dataset.apply + '/apply', { method: 'POST' });
-    if (r.ok) { showToast('Profile applied'); loadCoValues(); }
+    if (r.ok) { showToast('Profile applied'); formInitialValues = null; loadCoValues(); }
     else showToast('Apply failed: ' + r.error, 'error');
   }
   if (e.target.dataset && e.target.dataset.delete) {
