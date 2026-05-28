@@ -71,3 +71,56 @@ Describe 'Get-NextCandidate' {
         $c | Should -Be 10   # midpoint, going UP
     }
 }
+
+Describe 'Update-ScopeFromResult' {
+    BeforeEach {
+        $script:policy = Get-ModePolicy -Mode 'daily-driver' -Direction 'undervolt'
+    }
+    It 'sets knownStable on PASS' {
+        $s = New-ScopeState -ScopeId 'CCD0' -IsVCache $false -SeedValue 0 -Policy $script:policy
+        $s2 = Update-ScopeFromResult -ScopeState $s -Candidate -15 -Result 'PASS'
+        $s2.knownStable     | Should -Be -15
+        $s2.knownUnstable   | Should -Be $null
+        $s2.probesCompleted | Should -Be 1
+        $s2.lastCandidate   | Should -Be -15
+        $s2.lastResult      | Should -Be 'PASS'
+    }
+    It 'sets knownUnstable on FAIL_P95' {
+        $s = New-ScopeState -ScopeId 'CCD0' -IsVCache $false -SeedValue 0 -Policy $script:policy
+        $s2 = Update-ScopeFromResult -ScopeState $s -Candidate -22 -Result 'FAIL_P95'
+        $s2.knownUnstable | Should -Be -22
+        $s2.knownStable   | Should -Be $null
+    }
+    It 'sets knownUnstable on FAIL_WHEA' {
+        $s = New-ScopeState -ScopeId 'CCD0' -IsVCache $false -SeedValue 0 -Policy $script:policy
+        $s2 = Update-ScopeFromResult -ScopeState $s -Candidate -22 -Result 'FAIL_WHEA'
+        $s2.knownUnstable | Should -Be -22
+    }
+    It 'pushes knownUnstable one past candidate on ABORT_SAFETY (no stability signal)' {
+        $s = New-ScopeState -ScopeId 'CCD0' -IsVCache $false -SeedValue 0 -Policy $script:policy
+        $s2 = Update-ScopeFromResult -ScopeState $s -Candidate -22 -Result 'ABORT_SAFETY'
+        # For undervolt, "+1" means closer to zero / safer => unstable=-21
+        $s2.knownUnstable | Should -Be -21
+    }
+}
+
+Describe 'Test-ScopeConverged' {
+    BeforeEach {
+        $script:policy = Get-ModePolicy -Mode 'daily-driver' -Direction 'undervolt'
+    }
+    It 'returns false when bounds are not adjacent' {
+        $s = New-ScopeState -ScopeId 'CCD0' -IsVCache $false -SeedValue 0 -Policy $script:policy
+        $s.knownStable = -19; $s.knownUnstable = -25
+        Test-ScopeConverged -ScopeState $s | Should -BeFalse
+    }
+    It 'returns true when bounds differ by 1' {
+        $s = New-ScopeState -ScopeId 'CCD0' -IsVCache $false -SeedValue 0 -Policy $script:policy
+        $s.knownStable = -20; $s.knownUnstable = -21
+        Test-ScopeConverged -ScopeState $s | Should -BeTrue
+    }
+    It 'returns true when knownStable hits floor' {
+        $s = New-ScopeState -ScopeId 'CCD0' -IsVCache $false -SeedValue 0 -Policy $script:policy
+        $s.knownStable = $s.bounds.floor
+        Test-ScopeConverged -ScopeState $s | Should -BeTrue
+    }
+}

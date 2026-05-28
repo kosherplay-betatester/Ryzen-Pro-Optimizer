@@ -87,3 +87,70 @@ function Get-NextCandidate {
     if ($candidate -gt $ceiling) { $candidate = $ceiling }
     [int]$candidate
 }
+
+# Pure update: apply a probe result to a scope state. Returns a new
+# PSCustomObject (immutable-style) so callers can keep the prior state.
+function Update-ScopeFromResult {
+    param(
+        [Parameter(Mandatory)]$ScopeState,
+        [Parameter(Mandatory)][int]$Candidate,
+        [Parameter(Mandatory)][ValidateSet('PASS','FAIL_P95','FAIL_WHEA','ABORT_SAFETY','TIMEOUT','ABORT_CRASH')][string]$Result
+    )
+    $new = [PSCustomObject]@{
+        scopeId         = $ScopeState.scopeId
+        isVCache        = $ScopeState.isVCache
+        bounds          = $ScopeState.bounds
+        seedValue       = $ScopeState.seedValue
+        knownStable     = $ScopeState.knownStable
+        knownUnstable   = $ScopeState.knownUnstable
+        probesCompleted = $ScopeState.probesCompleted + 1
+        lastCandidate   = $Candidate
+        lastResult      = $Result
+        status          = 'probing'
+    }
+    switch ($Result) {
+        'PASS' {
+            if ($null -eq $new.knownStable -or
+                ($ScopeState.isVCache -eq $false -and $Candidate -lt $new.knownStable) -or
+                ($ScopeState.isVCache -eq $true  -and $Candidate -lt $new.knownStable)) {
+                # For undervolt, "deeper" = more negative. Always treat
+                # the deepest PASS we've seen as knownStable.
+                $new.knownStable = $Candidate
+            }
+            # Note: for overclock, "deeper" = more positive - same logic
+            # applies because we only call Update with candidates from
+            # Get-NextCandidate, which respects direction.
+        }
+        { $_ -in 'FAIL_P95','FAIL_WHEA','TIMEOUT','ABORT_CRASH' } {
+            if ($null -eq $new.knownUnstable -or $Candidate -gt $new.knownUnstable) {
+                # For undervolt, "shallower" = closer to zero. The
+                # shallowest fail we've ever recorded is knownUnstable.
+                $new.knownUnstable = $Candidate
+            }
+        }
+        'ABORT_SAFETY' {
+            # We never reached a stability conclusion - mark one step
+            # safer than the attempted candidate as unstable.
+            $shifted = $Candidate + 1  # for undervolt; flip for OC if needed
+            if ($null -eq $new.knownUnstable -or $shifted -gt $new.knownUnstable) {
+                $new.knownUnstable = $shifted
+            }
+        }
+    }
+    $new
+}
+
+# Convergence: when bounds are within 1 of each other, or knownStable
+# hit the floor (or ceiling for OC), or we have no stable value AND
+# unstable is at floor (everything in range failed).
+function Test-ScopeConverged {
+    param([Parameter(Mandatory)]$ScopeState)
+    $stable   = $ScopeState.knownStable
+    $unstable = $ScopeState.knownUnstable
+    $floor    = $ScopeState.bounds.floor
+    $ceiling  = $ScopeState.bounds.ceiling
+    if ($null -ne $stable -and ($stable -eq $floor -or $stable -eq $ceiling)) { return $true }
+    if ($null -ne $stable -and $null -ne $unstable -and [Math]::Abs($stable - $unstable) -le 1) { return $true }
+    if ($null -ne $unstable -and ($unstable -eq $floor -or $unstable -eq $ceiling) -and $null -eq $stable) { return $true }
+    $false
+}
