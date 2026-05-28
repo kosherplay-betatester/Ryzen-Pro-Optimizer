@@ -45,6 +45,11 @@ $RepoRoot = $PSScriptRoot
 . "$PSScriptRoot\lib\smart-suggestions.ps1"
 . "$PSScriptRoot\lib\whea-watcher.ps1"
 . "$PSScriptRoot\lib\safety-guard.ps1"
+. "$PSScriptRoot\lib\smart-tuner-modes.ps1"
+. "$PSScriptRoot\lib\smart-tuner-search.ps1"
+. "$PSScriptRoot\lib\smart-tuner-history.ps1"
+. "$PSScriptRoot\lib\smart-tuner-narrative.ps1"
+. "$PSScriptRoot\lib\smart-tuner.ps1"
 
 # Admin check (CO writes require it)
 $isAdmin = (New-Object System.Security.Principal.WindowsPrincipal([System.Security.Principal.WindowsIdentity]::GetCurrent())).IsInRole([System.Security.Principal.WindowsBuiltInRole]::Administrator)
@@ -469,6 +474,75 @@ Register-Route -Method POST -Path '/api/settings' -Handler {
         heartbeatEnabled = $script:HeartbeatEnabled
         safetyState = (Get-SafetyState)
     } }
+}
+
+$script:SmartTuneSessionPath = Join-Path $RepoRoot 'runtime\tuner-session.json'
+$script:SmartTuneHistoryPath = Join-Path $RepoRoot 'runtime\tuner-history.jsonl'
+
+Register-Route -Method POST -Path '/api/smart-tune/start' -Handler {
+    param($ctx, $params)
+    if (-not $runnerReady) { return @{ ok = $false; error = 'CoreCycler not installed' } }
+    if (-not $coReady)     { return @{ ok = $false; error = 'CO tool not initialized' } }
+    $cur = (Get-CurrentState).state
+    if ($cur -ne 'IDLE' -and $cur -ne 'REPORTING') {
+        return @{ ok = $false; error = "Cannot start - state=$cur" }
+    }
+    $body = Read-JsonBody -Context $ctx
+    $mode      = if ($body -and $body.mode) { [string]$body.mode } else { 'daily-driver' }
+    $direction = if ($body -and $body.direction) { [string]$body.direction } else { 'undervolt' }
+    try {
+        Start-SmartTune -Cpu $cpu -Mode $mode -Direction $direction `
+            -SessionPath $script:SmartTuneSessionPath -HistoryPath $script:SmartTuneHistoryPath
+        Set-CurrentState -NewState 'TESTING' -Data @{
+            startedAt = (Get-Date -Format 'o')
+            smartTune = $true
+            mode = $mode
+            direction = $direction
+        }
+        # Arm safety guard for the entire session
+        $wheaCount = @(Get-WheaEvents).Count
+        Enable-SafetyGuard -WheaBaseline $wheaCount -OnAbort {
+            param($violations)
+            Write-Log ERROR "SmartTune safety abort"
+            Stop-SmartTune
+            Set-CurrentState -NewState 'REPORTING' -Force
+        }.GetNewClosure()
+        @{ ok = $true; data = (Get-SmartTuneState -SinceSeqId 0) }
+    } catch {
+        @{ ok = $false; error = $_.Exception.Message }
+    }
+}
+
+Register-Route -Method POST -Path '/api/smart-tune/stop' -Handler {
+    Stop-SmartTune
+    Disable-SafetyGuard
+    Set-CurrentState -NewState 'REPORTING' -Force
+    @{ ok = $true; data = (Get-SmartTuneState -SinceSeqId 0) }
+}
+
+Register-Route -Method GET -Path '/api/smart-tune/state' -Handler {
+    param($ctx, $params)
+    $since = 0
+    $q = $ctx.Request.Url.Query
+    if ($q -match '[?&]since=(\d+)') { $since = [int]$Matches[1] }
+    @{ ok = $true; data = (Get-SmartTuneState -SinceSeqId $since) }
+}
+
+Register-Route -Method POST -Path '/api/smart-tune/resume' -Handler {
+    $sess = Load-TuneSession -Path $script:SmartTuneSessionPath
+    if (-not $sess) { return @{ ok = $false; error = 'No session to resume' } }
+    @{ ok = $true; data = @{ resumed = $true; sessionId = $sess.sessionId } }
+}
+
+Register-Route -Method POST -Path '/api/smart-tune/discard' -Handler {
+    Discard-SmartTune
+    Clear-PanicRevertState
+    @{ ok = $true; data = @{ discarded = $true } }
+}
+
+Register-Route -Method GET -Path '/api/smart-tune/history' -Handler {
+    $entries = @(Read-HistoryEntries -Path $script:SmartTuneHistoryPath -CpuModel $cpu.Name)
+    @{ ok = $true; data = @{ cpuModel = $cpu.Name; entries = $entries } }
 }
 
 Register-Route -Method GET -Path '/api/panic-revert' -Handler {
