@@ -50,6 +50,39 @@
   <div id="telemetry-strip" class="card telemetry hidden">Loading sensors…</div>
   <div id="telemetry-expanded" class="card hidden"></div>
 
+  <!-- Tune Theater: Smart Auto-Adjust live session progress and narrative -->
+  <section id="tune-theater" class="card tune-theater hidden">
+    <div class="theater-header">
+      <h2>🎬 Tune Theater</h2>
+      <div class="theater-meta">
+        <span id="theater-mode">—</span> · session <span id="theater-session">—</span>
+      </div>
+    </div>
+
+    <div class="theater-progress">
+      <div class="progress-row">
+        <span class="progress-label">Overall</span>
+        <div class="progress-bar"><div class="progress-fill" id="theater-overall-fill"></div></div>
+        <span class="progress-pct" id="theater-overall-pct">0%</span>
+        <span class="progress-eta">ETA <span id="theater-eta">—</span></span>
+      </div>
+    </div>
+
+    <div class="theater-currently" id="theater-currently">Waiting for first probe…</div>
+
+    <div class="theater-scopes" id="theater-scopes"></div>
+
+    <div class="theater-narrative">
+      <div class="narrative-header">
+        Narrative
+        <label class="muted small">
+          <input type="checkbox" id="narrative-autoscroll" checked> auto-scroll
+        </label>
+      </div>
+      <div id="narrative-log"></div>
+    </div>
+  </section>
+
   <!-- Pro Dashboard: live graphs + stats. Auto-shows during a test; toggle button always available. -->
   <section id="pro-dashboard" class="card pro-dashboard hidden">
     <div class="pro-header">
