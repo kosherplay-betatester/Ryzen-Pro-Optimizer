@@ -414,6 +414,17 @@ document.addEventListener('keydown', e => {
   if (e.key === 'Escape') resetCo();
 });
 
+document.addEventListener('change', e => {
+  if (e.target.name === 'testMode') {
+    const isAuto = e.target.value === 'auto';
+    document.getElementById('auto-options').classList.toggle('hidden', !isAuto);
+    document.getElementById('mode-info-auto').classList.toggle('hidden', !isAuto);
+    document.getElementById('mode-info-manual').classList.toggle('hidden', isAuto);
+    const btn = document.getElementById('start-test');
+    if (btn) btn.textContent = isAuto ? '▶ Start Auto-Adjust' : '▶ Start';
+  }
+});
+
 // Heartbeat — server uses absence of pings to detect closed browser and shut down
 async function sendHeartbeat() {
   try { await fetch('/api/heartbeat', { method: 'POST' }); } catch (e) { /* server may be gone */ }
