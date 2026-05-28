@@ -1,3 +1,30 @@
+# ============================================================================
+#  server.ps1 - Ryzen Pro Optimizer entry point and HTTP server
+# ============================================================================
+#  Spawned by: Launch.bat (after admin elevation + installer check)
+#  Runs until: Ctrl+C in the console, the console window closes, the
+#              browser sends POST /api/shutdown, or (opt-in only) the
+#              heartbeat watchdog detects a closed tab.
+#
+#  Responsibilities:
+#    1. Boot-time checks: admin, CPU detected, LHM DLL is the .NET-
+#       Framework-compatible build (self-heals if not), CoreCycler
+#       installed, PawnIO driver registered.
+#    2. Read launch CO snapshot so we always know what to revert to.
+#    3. Surface any pending panic-revert breadcrumb left by a previous
+#       crashed session.
+#    4. Register all /api/* routes (this file is the API contract).
+#    5. Drive the HTTP listener loop with a per-second tick callback
+#       that handles the (opt-in) heartbeat watchdog and shutdown
+#       requests.
+#    6. On exit: revert CO to the launch snapshot, stop the WHEA
+#       watcher, close telemetry, log "Server stopped".
+#
+#  Module load order matters: logging must come first (everything else
+#  uses Write-Log); router before http-server (the server consumes the
+#  route table); state-machine before corecycler-runner (the runner
+#  drives state transitions).
+# ============================================================================
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
@@ -17,6 +44,7 @@ $RepoRoot = $PSScriptRoot
 . "$PSScriptRoot\lib\log-parser.ps1"
 . "$PSScriptRoot\lib\smart-suggestions.ps1"
 . "$PSScriptRoot\lib\whea-watcher.ps1"
+. "$PSScriptRoot\lib\safety-guard.ps1"
 
 # Admin check (CO writes require it)
 $isAdmin = (New-Object System.Security.Principal.WindowsPrincipal([System.Security.Principal.WindowsIdentity]::GetCurrent())).IsInRole([System.Security.Principal.WindowsBuiltInRole]::Administrator)
@@ -36,6 +64,30 @@ Write-Log INFO "Detected CPU: $($cpu.Name) ($($cpu.Cores) cores, $(if ($cpu.IsDu
 # Initialize profile store
 Initialize-ProfileStore -RepoRoot $RepoRoot
 
+# Self-heal incompatible LibreHardwareMonitor DLL before initialising telemetry.
+# Recent LHM releases ship a .NET 10 build that Windows PowerShell 5.1 (.NET
+# Framework 4.x) cannot load - we detect that and trigger the installer to
+# replace it with the net472 build from NuGet.
+function Test-VendorLhmCompatible {
+    $dll = Join-Path $RepoRoot 'vendor\LibreHardwareMonitorLib.dll'
+    if (-not (Test-Path $dll)) { return $false }
+    try {
+        $text = [Text.Encoding]::ASCII.GetString([IO.File]::ReadAllBytes($dll))
+        if ($text -match '\.NETCoreApp,Version=v\d') { return $false }
+        return $true
+    } catch { return $false }
+}
+if (-not (Test-VendorLhmCompatible)) {
+    Write-Log WARN "Vendor LibreHardwareMonitorLib.dll targets .NET Core (incompatible with PS 5.1) - reinstalling..."
+    Write-Host ""
+    Write-Host "Replacing incompatible LibreHardwareMonitor build..." -ForegroundColor Yellow
+    try {
+        & "$PSScriptRoot\installer.ps1"
+    } catch {
+        Write-Log ERROR "Self-heal installer run failed: $($_.Exception.Message)"
+    }
+}
+
 # Initialize telemetry (best effort)
 $telemetryReady = Initialize-Telemetry -RepoRoot $RepoRoot
 
@@ -52,15 +104,39 @@ try {
 $script:LastReport = $null
 
 # Heartbeat tracking: when browser stops pinging, server reverts CO and exits.
-# Disabled when user unchecks "tab close shuts down server" in UI settings.
+# DISABLED BY DEFAULT - Chrome's memory saver / tab discard / RDP disconnects
+# would otherwise kill the service mid-test. User must opt in via UI checkbox.
+# When opted-in, the timeout is generous (3 minutes) so brief network blips are tolerated.
 $script:LastHeartbeat = [DateTime]::Now
 $script:ShutdownRequested = $false
-$script:HeartbeatTimeoutSeconds = 20
-$script:HeartbeatEnabled = $true
+$script:HeartbeatTimeoutSeconds = 180
+$script:HeartbeatEnabled = $false
 
 # Initialize WHEA Bodyguard (best effort; needs admin)
 Initialize-WheaWatcher -RepoRoot $RepoRoot
 $wheaActive = Start-WheaWatcher
+
+# Initialize Safety Guard (configured via /api/settings; armed when auto-tune starts)
+Initialize-SafetyGuard -RepoRoot $RepoRoot
+
+# Surface a panic-revert prompt if the previous run left one behind.
+# This file is created before every CO write during a guarded test; its
+# presence on startup means the system likely crashed mid-tune.
+$script:PendingPanicRevert = $null
+$panicPath = Join-Path $RepoRoot 'runtime\panic-revert.json'
+if (Test-Path $panicPath) {
+    try {
+        $script:PendingPanicRevert = Get-Content $panicPath -Raw | ConvertFrom-Json
+        Write-Host ""
+        Write-Host "============================================================" -ForegroundColor Yellow
+        Write-Host "  PREVIOUS SESSION CRASH DETECTED (panic-revert.json found)" -ForegroundColor Yellow
+        Write-Host "  Reason: $($script:PendingPanicRevert.reason)" -ForegroundColor Yellow
+        Write-Host "  CO at crash: $($script:PendingPanicRevert.values -join ',')" -ForegroundColor Yellow
+        Write-Host "  The UI will offer to revert to safer values." -ForegroundColor Yellow
+        Write-Host "============================================================" -ForegroundColor Yellow
+        Write-Host ""
+    } catch {}
+}
 
 # Graceful shutdown: revert CO, stop test, close listener
 function Invoke-GracefulShutdown {
@@ -157,7 +233,10 @@ Register-Route -Method POST -Path '/api/co' -Handler {
     }
 
     try {
+        # Breadcrumb so a BSOD mid-apply is recoverable on next boot
+        Save-PanicRevertState -Values $values -Reason "Manual /api/co apply ($($body.mode))"
         Set-AllCoreCo -Values $values
+        Clear-PanicRevertState
         @{ ok = $true; data = @{ applied = $values } }
     } catch {
         @{ ok = $false; error = $_.Exception.Message }
@@ -258,12 +337,27 @@ Register-Route -Method POST -Path '/api/test/start' -Handler {
         if ($coReady) { $autoStart = Get-AllCoreCo -CoreCount $cpu.Cores }
     }
 
+    # Pull per-run safety overrides (UI passes settings.safety on each start)
+    if ($body.PSObject.Properties['safety'] -and $body.safety) {
+        $s = $body.safety
+        $maxT = if ($s.PSObject.Properties['maxTempC']) { [int]$s.maxTempC } else { $null }
+        $maxV = if ($s.PSObject.Properties['maxVid']) { [double]$s.maxVid } else { $null }
+        $aw   = if ($s.PSObject.Properties['abortOnWhea']) { [bool]$s.abortOnWhea } else { $null }
+        Set-SafetyLimits -MaxTempC $maxT -MaxVid $maxV -AbortOnWhea $aw
+    }
+
     $coresToTest = $null
     if ($body.PSObject.Properties['coresToTest'] -and $body.coresToTest) {
         $coresToTest = @($body.coresToTest | ForEach-Object { [int]$_ })
     }
 
     try {
+        # Persist intended starting values BEFORE we kick off the test, so a
+        # crash during config write / spawn leaves the panic-revert breadcrumb.
+        if ($coReady -and $auto -and $autoStart) {
+            Save-PanicRevertState -Values $autoStart -Reason "Auto-Adjust start (mode=$mode, max=$autoMax, inc=$autoInc)"
+        }
+
         $cfg = New-CoreCyclerConfig -RepoRoot $RepoRoot `
             -StressTestProgram 'PRIME95' -Mode $mode -MaxIterations $iterations `
             -CoresToTest $coresToTest -TotalCores $cpu.Cores `
@@ -272,6 +366,45 @@ Register-Route -Method POST -Path '/api/test/start' -Handler {
 
         Start-CoreCyclerRun -ConfigPath $cfg
         Start-PeakTracking
+
+        # Arm Safety Guard on Auto-Adjust runs. Abort callback stops the test
+        # and steps every core back one increment toward neutral. We use
+        # .GetNewClosure() so the scriptblock captures $autoInc, $cpu, $coReady
+        # at definition time - the handler scope is gone by the time the
+        # callback fires from a future /api/status tick.
+        if ($auto) {
+            $wheaCount = @(Get-WheaEvents).Count
+            $autoIncForCallback = $autoInc
+            $cpuForCallback = $cpu
+            $coReadyForCallback = $coReady
+            $abortCallback = {
+                param($violations)
+                Write-Log ERROR "Safety abort callback firing - stopping test and stepping cores back"
+                try { Stop-CoreCyclerRun } catch {}
+                try { Stop-PeakTracking } catch {}
+                if ($coReadyForCallback) {
+                    try {
+                        $cur = Get-AllCoreCo -CoreCount $cpuForCallback.Cores
+                        $safer = New-Object 'int[]' $cur.Count
+                        for ($i = 0; $i -lt $cur.Count; $i++) {
+                            $v = $cur[$i]
+                            if ($v -lt 0)     { $safer[$i] = [Math]::Min(0, $v + $autoIncForCallback) }
+                            elseif ($v -gt 0) { $safer[$i] = [Math]::Max(0, $v - $autoIncForCallback) }
+                            else              { $safer[$i] = 0 }
+                        }
+                        $reason = if (@($violations).Count -gt 0) { "Safety auto step-back: $($violations[0].metric)" } else { 'Safety auto step-back' }
+                        Save-PanicRevertState -Values $safer -Reason $reason
+                        Set-AllCoreCo -Values $safer
+                        Increment-StepBack
+                        Write-Log INFO "Stepped back to: $($safer -join ',')"
+                    } catch { Write-Log ERROR "Step-back failed: $($_.Exception.Message)" }
+                }
+                try { Build-Report } catch {}
+                try { Set-CurrentState -NewState 'REPORTING' -Force } catch {}
+            }.GetNewClosure()
+            Enable-SafetyGuard -WheaBaseline $wheaCount -OnAbort $abortCallback
+        }
+
         Set-CurrentState -NewState 'TESTING' -Data @{
             startedAt = (Get-Date -Format 'o')
             mode = $mode
@@ -294,6 +427,8 @@ Register-Route -Method POST -Path '/api/test/stop' -Handler {
         Set-CurrentState -NewState 'STOPPING'
         Stop-CoreCyclerRun
         Stop-PeakTracking
+        Disable-SafetyGuard
+        Clear-PanicRevertState
         # Try to build the report from whatever we have
         try { Build-Report } catch { Write-Log WARN "Build-Report failed: $($_.Exception.Message)" }
         Set-CurrentState -NewState 'REPORTING' -Data (Get-CurrentState).data
@@ -321,7 +456,40 @@ Register-Route -Method POST -Path '/api/settings' -Handler {
         $script:LastHeartbeat = [DateTime]::Now  # reset clock when toggling
         Write-Log INFO "Heartbeat watchdog: $(if ($script:HeartbeatEnabled) {'ENABLED'} else {'DISABLED'})"
     }
-    @{ ok = $true; data = @{ heartbeatEnabled = $script:HeartbeatEnabled } }
+    $maxT = $null; $maxV = $null; $abortWhea = $null
+    if ($body) {
+        if ($null -ne $body.PSObject.Properties['safetyMaxTempC'])        { $maxT = [int]$body.safetyMaxTempC }
+        if ($null -ne $body.PSObject.Properties['safetyMaxVid'])          { $maxV = [double]$body.safetyMaxVid }
+        if ($null -ne $body.PSObject.Properties['safetyAutoAbortOnWhea']) { $abortWhea = [bool]$body.safetyAutoAbortOnWhea }
+    }
+    if ($null -ne $maxT -or $null -ne $maxV -or $null -ne $abortWhea) {
+        Set-SafetyLimits -MaxTempC $maxT -MaxVid $maxV -AbortOnWhea $abortWhea
+    }
+    @{ ok = $true; data = @{
+        heartbeatEnabled = $script:HeartbeatEnabled
+        safetyState = (Get-SafetyState)
+    } }
+}
+
+Register-Route -Method GET -Path '/api/panic-revert' -Handler {
+    @{ ok = $true; data = $script:PendingPanicRevert }
+}
+
+Register-Route -Method POST -Path '/api/panic-revert/apply' -Handler {
+    if (-not $coReady) { return @{ ok = $false; error = 'CO tool not initialized' } }
+    if ($null -eq $launchSnapshot) { return @{ ok = $false; error = 'No launch snapshot to revert to' } }
+    try {
+        Set-AllCoreCo -Values $launchSnapshot
+        Clear-PanicRevertState
+        $script:PendingPanicRevert = $null
+        @{ ok = $true; data = @{ reverted = $launchSnapshot } }
+    } catch { @{ ok = $false; error = $_.Exception.Message } }
+}
+
+Register-Route -Method POST -Path '/api/panic-revert/dismiss' -Handler {
+    Clear-PanicRevertState
+    $script:PendingPanicRevert = $null
+    @{ ok = $true; data = @{ dismissed = $true } }
 }
 
 Register-Route -Method GET -Path '/api/status' -Handler {
@@ -333,6 +501,8 @@ Register-Route -Method GET -Path '/api/status' -Handler {
     # Auto-transition from TESTING to REPORTING if CoreCycler has exited
     if ($state.state -eq 'TESTING' -and -not (Test-CoreCyclerRunning)) {
         Stop-PeakTracking
+        Disable-SafetyGuard
+        Clear-PanicRevertState
         try { Build-Report } catch { Write-Log WARN "Build-Report on auto-transition failed: $($_.Exception.Message)" }
         Set-CurrentState -NewState 'REPORTING' -Data $state.data
         $state = Get-CurrentState
@@ -340,8 +510,11 @@ Register-Route -Method GET -Path '/api/status' -Handler {
 
     if ($state.state -eq 'TESTING' -or $state.state -eq 'STOPPING') {
         $live = Get-LiveStatus
-        # Also update peaks via snapshot read while testing
-        if ($telemetryReady) { $null = Read-TelemetrySnapshot }
+        # Snapshot for peak tracking + safety inspection while testing.
+        if ($telemetryReady) {
+            $snap = Read-TelemetrySnapshot
+            $null = Inspect-SafetySnapshot -Snapshot $snap -WheaCount @($whea).Count
+        }
     }
 
     @{
@@ -352,6 +525,8 @@ Register-Route -Method GET -Path '/api/status' -Handler {
             live = $live
             wheaEvents = $whea
             bodyguardActive = (Test-WheaWatcherActive)
+            safetyGuard = (Get-SafetyState)
+            panicRevertPending = ($null -ne $script:PendingPanicRevert)
         }
     }
 }
@@ -389,19 +564,17 @@ function Build-Report {
         -CurrentCoValues $currentVals `
         -IterationsRequested $iterReq
 
-    # Add Smart Suggestions
-    $reportMode = if ($mode) { 'all-cores' } else { 'all-cores' }
-    if ($stateData -and $stateData.PSObject.Properties['mode']) {
-        # 'mode' here is the stress-test type, not CO mode; we don't currently track CO mode in state
-        # Use a heuristic: if all CO values are equal -> all-cores; if half-half -> per-ccd; else per-core
-    }
-    if ($currentVals -and $currentVals.Count -gt 0) {
-        $allSame = ($currentVals | Select-Object -Unique).Count -eq 1
-        if ($allSame) { $reportMode = 'all-cores' }
-        elseif ($cpu.IsDualCcd) {
-            $ccd0Same = ($currentVals[0..($cpu.CoresPerCcd-1)] | Select-Object -Unique).Count -eq 1
-            $ccd1Same = ($currentVals[$cpu.CoresPerCcd..($cpu.Cores-1)] | Select-Object -Unique).Count -eq 1
-            if ($ccd0Same -and $ccd1Same) { $reportMode = 'per-ccd' } else { $reportMode = 'per-core' }
+    # Add Smart Suggestions - infer CO mode from per-core values
+    $reportMode = 'all-cores'
+    $valsArr = @($currentVals)
+    if ($valsArr.Count -gt 0) {
+        $unique = @($valsArr | Select-Object -Unique)
+        if ($unique.Count -eq 1) {
+            $reportMode = 'all-cores'
+        } elseif ($cpu.IsDualCcd -and $valsArr.Count -ge ($cpu.CoresPerCcd * 2)) {
+            $ccd0 = @($valsArr[0..($cpu.CoresPerCcd-1)] | Select-Object -Unique)
+            $ccd1 = @($valsArr[$cpu.CoresPerCcd..($cpu.Cores-1)] | Select-Object -Unique)
+            if ($ccd0.Count -eq 1 -and $ccd1.Count -eq 1) { $reportMode = 'per-ccd' } else { $reportMode = 'per-core' }
         } else {
             $reportMode = 'per-core'
         }

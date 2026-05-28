@@ -1,8 +1,31 @@
+# ============================================================================
+#  corecycler-runner.ps1 - Subprocess manager for CoreCycler
+# ============================================================================
+#  Used by  : server.ps1 (test-start, test-stop, status poll)
+#  Wraps    : corecycler/script-corecycler.ps1 (an external project)
+#
+#  Lifecycle:
+#    1. New-CoreCyclerConfig  - generates runtime/generated-config.ini
+#       from the UI selections (Prime95 mode, iterations, cores, auto-
+#       adjust settings)
+#    2. Start-CoreCyclerRun   - backs up CoreCycler's own config.ini,
+#       swaps in ours, spawns the script in a new visible cmd window
+#       so the user can see the test live, then discovers the log file
+#       path so we can tail it
+#    3. Get-LiveStatus        - tails the log to extract current core,
+#       iteration, error/WHEA counts (shown in the UI status card)
+#    4. Stop-CoreCyclerRun    - tries Ctrl+C via the Win32 console API
+#       (clean shutdown); falls back to Stop-Process force if that fails.
+#       Also kills any orphaned prime95.exe children.
+#    5. Restores CoreCycler's original config.ini (we backed it up).
+#
+#  Why we run CoreCycler instead of reimplementing Prime95 orchestration:
+#  sp00n's script has years of community testing on Ryzen quirks (HT
+#  affinity, P-core/E-core gotchas on Intel, log formats), and we
+#  benefit from every update by just refreshing the corecycler/ folder.
+# ============================================================================
 Set-StrictMode -Version Latest
 . "$PSScriptRoot\logging.ps1"
-
-# Manages a CoreCycler subprocess: config generation, spawn, log discovery, live tail.
-# Does not implement its own stress logic - entirely orchestrates the existing CoreCycler script.
 
 $script:CcProcess = $null
 $script:CcDir = $null

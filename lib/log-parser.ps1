@@ -1,3 +1,27 @@
+# ============================================================================
+#  log-parser.ps1 - Distil CoreCycler + Prime95 logs into a verdict
+# ============================================================================
+#  Used by  : server.ps1 (Build-Report) after a test completes
+#  Reads    : corecycler/logs/CoreCycler_*.log  + corecycler/logs/Prime95_*.log
+#
+#  What we extract from CoreCycler's log:
+#    - "Set to Core N"         - which core was being tested when
+#    - "Iteration N/M"          - max iteration reached vs requested
+#    - "Test completed in ..."  - total runtime
+#    - "core_error|has thrown an error|core .* errored" - per-core failures
+#    - "cores with an error so far: N" - running totals
+#    - "cores with a WHEA error so far: N"
+#
+#  What we extract from Prime95's log:
+#    - "FATAL ERROR | Rounding was | Hardware failure"  - belt and braces;
+#      sometimes Prime95 errors don't make it into the CoreCycler log
+#      cleanly, so we cross-check.
+#
+#  Verdict resolution: FAILED beats PASSED beats INCOMPLETE. If we can't
+#  prove either pass or fail (test was stopped early, log truncated), we
+#  call it INCOMPLETE - the UI shows that as the amber "stopped before
+#  completion" verdict and avoids false claims of stability.
+# ============================================================================
 Set-StrictMode -Version Latest
 . "$PSScriptRoot\logging.ps1"
 
@@ -89,15 +113,19 @@ function Read-CoreCyclerLog {
     }
 
     # Verdict logic
-    if ($errCores.Count -gt 0 -or $lastErrorCount -gt 0 -or $primeHasErrors -or $lastWheaCount -gt 0) {
+    $testedCount = @($report.coresTested).Count
+    $errCount = @($errCores).Count
+    $reqIter = [Math]::Max(1, [int]$report.iterationsRequested)
+    if ($errCount -gt 0 -or $lastErrorCount -gt 0 -or $primeHasErrors -or $lastWheaCount -gt 0) {
         $report.verdict = 'FAILED'
-    } elseif ($maxIterSeen -ge $report.iterationsRequested -and $report.coresTested.Count -gt 0) {
+    } elseif ($maxIterSeen -ge $reqIter -and $testedCount -gt 0) {
         $report.verdict = 'PASSED'
     } else {
         $report.verdict = 'INCOMPLETE'
     }
 
     # Per-core failure attribution
+    $coVals = @($CurrentCoValues)
     foreach ($c in $errCores) {
         $ccd = if ($CpuInfo -and $CpuInfo.IsDualCcd) {
             [int]([Math]::Floor($c / $CpuInfo.CoresPerCcd))
@@ -110,11 +138,11 @@ function Read-CoreCyclerLog {
             core = $c
             ccd = $ccd
             ccdLabel = $ccdLabel
-            coAtFailure = if ($CurrentCoValues -and $c -lt $CurrentCoValues.Count) { $CurrentCoValues[$c] } else { $null }
+            coAtFailure = if ($coVals.Count -gt 0 -and $c -lt $coVals.Count) { $coVals[$c] } else { $null }
             errorType = 'Stress test error'
         }
     }
-    $report.coresPassed = $report.coresTested | Where-Object { $errCores -notcontains $_ }
+    $report.coresPassed = @(@($report.coresTested) | Where-Object { $errCores -notcontains $_ })
 
     [PSCustomObject]$report
 }

@@ -1,3 +1,15 @@
+# ============================================================================
+#  router.ps1 - Parameterised HTTP route table
+# ============================================================================
+#  Used by  : http-server.ps1 (resolves an incoming request to a handler)
+#  Populated by: server.ps1 (calls Register-Route for each endpoint)
+#
+#  How paths work: "/api/profiles/{name}" registers a route where
+#  {name} is captured and passed to the handler as $params.name. The
+#  pattern segment matches one URL segment (no slashes). Anything more
+#  exotic - regexy paths, query-string parsing - is intentionally NOT
+#  here: the simpler the router, the fewer surprises in the request log.
+# ============================================================================
 Set-StrictMode -Version Latest
 
 # Route table: keys "METHOD /path" => @{ Handler = scriptblock; PathPattern = regex; ParamNames = string[] }

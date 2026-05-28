@@ -1,3 +1,21 @@
+# ============================================================================
+#  http-server.ps1 - Thin wrapper over System.Net.HttpListener
+# ============================================================================
+#  Used by  : server.ps1 (Start-HttpServer + Invoke-ServerLoop)
+#  Provides : Send-JsonResponse, Send-FileResponse, Read-JsonBody, plus
+#             the main request loop with a pluggable per-second tick
+#             callback (used by the heartbeat watchdog in server.ps1)
+#
+#  Why HttpListener and not a real web framework: HttpListener ships in
+#  .NET Framework and just works on PowerShell 5.1 with no install. The
+#  whole server fits in a few hundred lines and never needs admin DACL
+#  reservations for the 127.0.0.1 prefix.
+#
+#  Why the BeginGetContext / WaitOne(1000) pattern: pure GetContext()
+#  blocks forever and we wouldn't be able to fire the tick callback. We
+#  poll the async wait handle every second so the callback (heartbeat,
+#  shutdown check) gets a chance to run between requests.
+# ============================================================================
 Set-StrictMode -Version Latest
 
 . "$PSScriptRoot\logging.ps1"

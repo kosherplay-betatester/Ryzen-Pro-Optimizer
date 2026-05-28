@@ -1,5 +1,29 @@
-// Ryzen Pro Optimizer - Browser UI
-// Polls the local PowerShell HTTP server, manages CO setting / testing / reporting.
+// =============================================================================
+//  app.js - Ryzen Pro Optimizer browser UI
+// =============================================================================
+//  Loaded by web/index.html. Talks to the PowerShell server on 127.0.0.1.
+//
+//  What lives in this file (top to bottom):
+//    - Constants and global state (cpuInfo, current/launch CO values, etc.)
+//    - fetchJson + showToast helpers
+//    - CPU / CO loading and form rendering (renderForm, applyCo, etc.)
+//    - Test lifecycle (startTest, stopTest, loadReport)
+//    - Telemetry rendering: compact strip + expanded grid
+//    - The ProDash IIFE module - Pro Dashboard charts, stats grid, V/F
+//      scatter, heatmap, history export, time-window picker, pause/reset
+//    - pollStatus + renderSafetyBanner - live test progress + Safety Guard
+//    - Profiles list + safe panic-revert prompt
+//    - Settings load/save (localStorage v2, default tab-close OFF)
+//    - DOMContentLoaded boot: initial loads, start the 1Hz pollers
+//
+//  Why vanilla JS and no framework: one file, no build step, no npm,
+//  works in any modern browser, easy to inspect with View Source. The
+//  only third-party dep is Chart.js (vendored at web/vendor/chart.umd.js).
+//
+//  Polling cadence: 1 Hz for telemetry and status while the page is open.
+//  No WebSocket - the simple polling model means the server stays a
+//  request/response HTTP listener with no extra connection state.
+// =============================================================================
 
 const POLL_INTERVAL_ACTIVE_MS = 1000;
 const POLL_INTERVAL_IDLE_MS = 5000;
@@ -198,7 +222,12 @@ async function startTest() {
     iterations: +document.getElementById('iterations').value,
     autoAdjust: auto,
     autoMax: auto ? +document.getElementById('auto-max').value : 0,
-    autoInc: auto ? +document.getElementById('auto-inc').value : 1
+    autoInc: auto ? +document.getElementById('auto-inc').value : 1,
+    safety: {
+      maxTempC: settings.safetyMaxTempC,
+      maxVid:   settings.safetyMaxVid,
+      abortOnWhea: settings.safetyAutoAbortOnWhea
+    }
   };
   const r = await fetchJson('/api/test/start', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
   if (!r.ok) { showToast('Start failed: ' + r.error, 'error'); return; }
@@ -206,6 +235,9 @@ async function startTest() {
   document.getElementById('stop-test').classList.remove('hidden');
   document.getElementById('status-card').classList.remove('hidden');
   document.getElementById('report-card').classList.add('hidden');
+  // Auto-open Pro Dashboard + reset stats so the user sees the run from t=0
+  ProDash.resetStats();
+  ProDash.show();
 }
 
 async function stopTest() {
@@ -301,8 +333,410 @@ async function pollTelemetry() {
   try {
     const r = await fetchJson('/api/telemetry');
     renderTelemetry(r.data);
+    ProDash.ingest(r.data);
   } catch (e) { /* ignore */ }
 }
+
+// ============================================================================
+// Pro Dashboard - live charts, stats, safety integration.
+// One module wraps Chart.js setup, rolling history, and stat aggregation.
+// ============================================================================
+const ProDash = (() => {
+  const HISTORY_CAP = 1800;       // ~30 min @ 1Hz
+  const COLORS = [
+    '#06B6D4','#3B82F6','#8B5CF6','#EC4899','#F59E0B','#10B981',
+    '#EF4444','#84CC16','#22D3EE','#A855F7','#F472B6','#FBBF24',
+    '#34D399','#F87171','#A3E635','#60A5FA'
+  ];
+  let windowSec = 180;
+  let paused = false;
+  let history = [];   // [{t, pkgTemp, pkgPower, ccdTemps:[{ccd,tempC}], cores:[{core,voltage,clockMHz,loadPct}]}]
+  let charts = {};
+  let coreCount = 0;
+
+  // Stats accumulator (reset on demand)
+  let stats = freshStats();
+  function freshStats() {
+    return {
+      samples: 0,
+      pkgTemp: { min: null, max: null, sum: 0, n: 0 },
+      pkgPower:{ min: null, max: null, sum: 0, n: 0 },
+      avgClk:  { min: null, max: null, sum: 0, n: 0 },
+      maxClk:  null,
+      avgVid:  { min: null, max: null, sum: 0, n: 0 },
+      maxVid:  null,
+      avgLoad: { sum: 0, n: 0 },
+      hottestCore: { core: null, temp: null },
+    };
+  }
+  function pushStat(slot, v) {
+    if (v == null || isNaN(v)) return;
+    if (slot.min == null || v < slot.min) slot.min = v;
+    if (slot.max == null || v > slot.max) slot.max = v;
+    slot.sum += v; slot.n++;
+  }
+  function avg(slot) { return slot.n ? slot.sum / slot.n : null; }
+
+  function physicalCores() {
+    if (!cpuInfo || !cpuInfo.Cores) return Math.max(coreCount, 8);
+    return cpuInfo.Cores;
+  }
+
+  function buildLineChart(canvasId, label, opts) {
+    opts = opts || {};
+    const ctx = document.getElementById(canvasId);
+    if (!ctx) return null;
+    const datasets = [];
+    if (opts.perCore) {
+      const n = physicalCores();
+      for (let i = 0; i < n; i++) {
+        datasets.push({
+          label: 'C' + i,
+          data: [], borderWidth: 1.2, pointRadius: 0, tension: 0.25,
+          borderColor: COLORS[i % COLORS.length],
+          backgroundColor: COLORS[i % COLORS.length] + '22',
+          fill: false
+        });
+      }
+    } else if (opts.series) {
+      for (const s of opts.series) {
+        datasets.push({
+          label: s.label, data: [], borderWidth: s.w || 1.8, pointRadius: 0, tension: 0.25,
+          borderColor: s.color, backgroundColor: s.color + '22', fill: !!s.fill
+        });
+      }
+    }
+    return new Chart(ctx, {
+      type: 'line',
+      data: { labels: [], datasets },
+      options: {
+        animation: false,
+        responsive: true,
+        maintainAspectRatio: false,
+        interaction: { mode: 'nearest', intersect: false },
+        plugins: {
+          legend: { display: !!opts.legend, position: 'bottom',
+                    labels: { color: '#8b95a8', boxWidth: 10, font: { size: 10 } } },
+          tooltip: { enabled: true, mode: 'index', intersect: false }
+        },
+        scales: {
+          x: { ticks: { color: '#5e6878', maxTicksLimit: 6, font: { size: 10 } },
+               grid: { color: 'rgba(255,255,255,0.04)' } },
+          y: { ticks: { color: '#8b95a8', font: { size: 10 } },
+               grid: { color: 'rgba(255,255,255,0.05)' },
+               suggestedMin: opts.yMin, suggestedMax: opts.yMax }
+        }
+      }
+    });
+  }
+
+  function buildScatter(canvasId) {
+    const ctx = document.getElementById(canvasId);
+    if (!ctx) return null;
+    return new Chart(ctx, {
+      type: 'scatter',
+      data: { datasets: [{ label: 'core', data: [], pointRadius: 5, pointHoverRadius: 7,
+                           pointBackgroundColor: ctx => COLORS[(ctx.dataIndex || 0) % COLORS.length] }] },
+      options: {
+        animation: false, responsive: true, maintainAspectRatio: false,
+        plugins: {
+          legend: { display: false },
+          tooltip: { callbacks: {
+            label: (ctx) => `Core ${ctx.raw.core}: ${ctx.raw.x.toFixed(3)}V · ${(ctx.raw.y/1000).toFixed(2)} GHz`
+          } }
+        },
+        scales: {
+          x: { title: { display: true, text: 'VID (V)', color: '#8b95a8', font: { size: 10 } },
+               ticks: { color: '#8b95a8', font: { size: 10 } },
+               grid: { color: 'rgba(255,255,255,0.05)' } },
+          y: { title: { display: true, text: 'Clock (MHz)', color: '#8b95a8', font: { size: 10 } },
+               ticks: { color: '#8b95a8', font: { size: 10 } },
+               grid: { color: 'rgba(255,255,255,0.05)' } }
+        }
+      }
+    });
+  }
+
+  function ensureCharts() {
+    if (charts.ready) return;
+    const ccdSeries = [{ label: 'Pkg (Tctl)', color: '#EF4444', w: 2.2 }];
+    if (cpuInfo && cpuInfo.IsDualCcd) {
+      ccdSeries.push({ label: 'CCD0', color: '#3B82F6', w: 1.4 });
+      ccdSeries.push({ label: 'CCD1', color: '#10B981', w: 1.4 });
+    }
+    charts.clock = buildLineChart('chart-clock', 'Clock', { perCore: true, legend: false, yMin: 0 });
+    charts.temp  = buildLineChart('chart-temp',  'Temp',  { series: ccdSeries, legend: true, yMin: 30, yMax: 100 });
+    charts.vid   = buildLineChart('chart-vid',   'VID',   { perCore: true, legend: false, yMin: 0.8, yMax: 1.55 });
+    charts.power = buildLineChart('chart-power', 'Power', { series: [{ label: 'Package (W)', color: '#F59E0B', w: 2.2, fill: true }], legend: false, yMin: 0 });
+    charts.vf    = buildScatter('chart-vf');
+    charts.ready = true;
+  }
+
+  function ingest(snap) {
+    if (paused || !snap) return;
+    history.push(snap);
+    if (history.length > HISTORY_CAP) history.shift();
+    coreCount = Math.max(coreCount, (snap.cores || []).length);
+    accumulateStats(snap);
+    render();
+  }
+
+  function accumulateStats(snap) {
+    stats.samples++;
+    pushStat(stats.pkgTemp,  snap.packageTemp);
+    pushStat(stats.pkgPower, snap.packagePower);
+    const cores = (snap.cores || []).filter(c => c.core < physicalCores());
+    if (cores.length) {
+      const clks = cores.map(c => c.clockMHz).filter(v => v != null);
+      const vids = cores.map(c => c.voltage).filter(v => v != null);
+      const loads = cores.map(c => c.loadPct).filter(v => v != null);
+      if (clks.length) {
+        const a = clks.reduce((s,v)=>s+v,0) / clks.length;
+        pushStat(stats.avgClk, a);
+        const m = Math.max(...clks);
+        if (stats.maxClk == null || m > stats.maxClk) stats.maxClk = m;
+      }
+      if (vids.length) {
+        const a = vids.reduce((s,v)=>s+v,0) / vids.length;
+        pushStat(stats.avgVid, a);
+        const m = Math.max(...vids);
+        if (stats.maxVid == null || m > stats.maxVid) stats.maxVid = m;
+      }
+      if (loads.length) {
+        const a = loads.reduce((s,v)=>s+v,0) / loads.length;
+        stats.avgLoad.sum += a; stats.avgLoad.n++;
+      }
+    }
+    // Hottest core uses package temp as proxy unless CCD temps present
+    if (snap.ccdTemps && snap.ccdTemps.length) {
+      const h = snap.ccdTemps.reduce((p,c) => (p == null || c.tempC > p.tempC) ? c : p, null);
+      if (h && (stats.hottestCore.temp == null || h.tempC > stats.hottestCore.temp)) {
+        stats.hottestCore = { core: 'CCD' + h.ccd, temp: h.tempC };
+      }
+    } else if (snap.packageTemp != null) {
+      if (stats.hottestCore.temp == null || snap.packageTemp > stats.hottestCore.temp) {
+        stats.hottestCore = { core: 'Pkg', temp: snap.packageTemp };
+      }
+    }
+  }
+
+  function windowedHistory() {
+    if (!history.length) return [];
+    const now = new Date(history[history.length - 1].time).getTime();
+    const cutoff = now - windowSec * 1000;
+    return history.filter(s => new Date(s.time).getTime() >= cutoff);
+  }
+
+  function fmtTime(iso) {
+    const d = new Date(iso);
+    return d.getHours().toString().padStart(2,'0') + ':' + d.getMinutes().toString().padStart(2,'0') + ':' + d.getSeconds().toString().padStart(2,'0');
+  }
+
+  function render() {
+    ensureCharts();
+    const win = windowedHistory();
+    if (!win.length) return;
+    const labels = win.map(s => fmtTime(s.time));
+
+    // Clock per-core
+    if (charts.clock) {
+      charts.clock.data.labels = labels;
+      const n = physicalCores();
+      for (let i = 0; i < n; i++) {
+        charts.clock.data.datasets[i].data = win.map(s => {
+          const c = (s.cores || []).find(x => x.core === i);
+          return c ? c.clockMHz : null;
+        });
+      }
+      charts.clock.update('none');
+    }
+    // VID per-core
+    if (charts.vid) {
+      charts.vid.data.labels = labels;
+      const n = physicalCores();
+      for (let i = 0; i < n; i++) {
+        charts.vid.data.datasets[i].data = win.map(s => {
+          const c = (s.cores || []).find(x => x.core === i);
+          return c ? c.voltage : null;
+        });
+      }
+      charts.vid.update('none');
+    }
+    // Temp (Pkg + CCDs)
+    if (charts.temp) {
+      charts.temp.data.labels = labels;
+      charts.temp.data.datasets[0].data = win.map(s => s.packageTemp);
+      if (cpuInfo && cpuInfo.IsDualCcd) {
+        charts.temp.data.datasets[1].data = win.map(s => {
+          const ccd = (s.ccdTemps || []).find(x => x.ccd === 0); return ccd ? ccd.tempC : null;
+        });
+        charts.temp.data.datasets[2].data = win.map(s => {
+          const ccd = (s.ccdTemps || []).find(x => x.ccd === 1); return ccd ? ccd.tempC : null;
+        });
+      }
+      charts.temp.update('none');
+    }
+    // Power
+    if (charts.power) {
+      charts.power.data.labels = labels;
+      charts.power.data.datasets[0].data = win.map(s => s.packagePower);
+      charts.power.update('none');
+    }
+    // V/F scatter (current snapshot only)
+    if (charts.vf) {
+      const cur = win[win.length - 1];
+      const pts = (cur.cores || [])
+        .filter(c => c.core < physicalCores() && c.voltage != null && c.clockMHz != null && c.clockMHz > 100)
+        .map(c => ({ x: c.voltage, y: c.clockMHz, core: c.core }));
+      charts.vf.data.datasets[0].data = pts;
+      charts.vf.update('none');
+    }
+
+    renderStats();
+    renderHeatmap(win[win.length - 1]);
+  }
+
+  function setText(id, v) { const el = document.getElementById(id); if (el) el.textContent = v; }
+  function fmt(v, dp, suffix) {
+    if (v == null || isNaN(v)) return '—';
+    return v.toFixed(dp) + (suffix || '');
+  }
+
+  function renderStats() {
+    setText('st-samples', stats.samples);
+    setText('st-temp',     fmt(stats.pkgTemp.max != null ? lastNonNull('packageTemp') : null, 0, '°C'));
+    setText('st-temp-min', fmt(stats.pkgTemp.min, 0, '°C'));
+    setText('st-temp-avg', fmt(avg(stats.pkgTemp), 0, '°C'));
+    setText('st-temp-max', fmt(stats.pkgTemp.max, 0, '°C'));
+    setText('st-pwr',      fmt(lastNonNull('packagePower'), 0, 'W'));
+    setText('st-pwr-min',  fmt(stats.pkgPower.min, 0, 'W'));
+    setText('st-pwr-avg',  fmt(avg(stats.pkgPower), 0, 'W'));
+    setText('st-pwr-max',  fmt(stats.pkgPower.max, 0, 'W'));
+    setText('st-clk',      fmt(stats.maxClk, 0, ' MHz'));
+    setText('st-clk-min',  fmt(stats.avgClk.min, 0, ''));
+    setText('st-clk-avg',  fmt(avg(stats.avgClk), 0, ''));
+    setText('st-clk-max',  fmt(stats.maxClk, 0, ''));
+    setText('st-vid',      fmt(stats.maxVid, 3, 'V'));
+    setText('st-vid-min',  fmt(stats.avgVid.min, 3, ''));
+    setText('st-vid-avg',  fmt(avg(stats.avgVid), 3, ''));
+    setText('st-vid-max',  fmt(stats.maxVid, 3, ''));
+    setText('st-hot',      fmt(stats.hottestCore.temp, 0, '°C'));
+    setText('st-hot-core', stats.hottestCore.core ? `peak on ${stats.hottestCore.core}` : '—');
+    setText('st-load',     fmt(avg(stats.avgLoad), 0, '%'));
+
+    // Threshold colouring
+    const tempTile = document.getElementById('st-temp')?.parentElement;
+    if (tempTile) {
+      tempTile.classList.remove('warn','danger');
+      const maxT = stats.pkgTemp.max || 0;
+      if (maxT >= (settings.safetyMaxTempC || 95)) tempTile.classList.add('danger');
+      else if (maxT >= ((settings.safetyMaxTempC || 95) - 10)) tempTile.classList.add('warn');
+    }
+    const vidTile = document.getElementById('st-vid')?.parentElement;
+    if (vidTile) {
+      vidTile.classList.remove('warn','danger');
+      const maxV = stats.maxVid || 0;
+      if (maxV >= (settings.safetyMaxVid || 1.45)) vidTile.classList.add('danger');
+      else if (maxV >= ((settings.safetyMaxVid || 1.45) - 0.05)) vidTile.classList.add('warn');
+    }
+  }
+
+  function lastNonNull(field) {
+    for (let i = history.length - 1; i >= 0; i--) {
+      const v = history[i][field];
+      if (v != null) return v;
+    }
+    return null;
+  }
+
+  function renderHeatmap(snap) {
+    if (!snap) return;
+    const wrap = document.getElementById('core-heatmap');
+    if (!wrap) return;
+    const n = physicalCores();
+    const cores = snap.cores || [];
+    let html = '';
+    for (let i = 0; i < n; i++) {
+      const c = cores.find(x => x.core === i);
+      const v = c && c.voltage != null ? c.voltage.toFixed(3) + 'V' : '—';
+      const clk = c && c.clockMHz != null && c.clockMHz > 0 ? (c.clockMHz / 1000).toFixed(2) + 'G' : '—';
+      const load = c && c.loadPct != null ? c.loadPct.toFixed(0) : 0;
+      // Heat class based on package temp as a proxy (per-core temps not available on Ryzen)
+      let cls = '';
+      if (load > 80) cls = 'heat-hot';
+      else if (load > 30) cls = 'heat-warm';
+      else if (load < 5) cls = 'heat-cold';
+      const ccd = cpuInfo && cpuInfo.IsDualCcd ? Math.floor(i / cpuInfo.CoresPerCcd) : 0;
+      const vCacheTag = cpuInfo && cpuInfo.VCacheCcdIndex === ccd ? '🔋' : '';
+      html += `<div class="heat-tile ${cls}" title="Core ${i} (CCD${ccd})${vCacheTag ? ' V-Cache':''}">
+        <div class="ht-core">C${i}${vCacheTag}</div>
+        <div class="ht-row">${v}</div>
+        <div class="ht-row">${clk}</div>
+        <div class="ht-row">${load}%</div>
+        <div class="ht-bar" style="width:${load}%"></div>
+      </div>`;
+    }
+    wrap.innerHTML = html;
+  }
+
+  function setWindow(sec) {
+    windowSec = sec;
+    document.querySelectorAll('.pill[data-range]').forEach(p => p.classList.toggle('active', +p.dataset.range === sec));
+    render();
+  }
+
+  function resetStats() {
+    stats = freshStats();
+    showToast('Stats reset');
+    render();
+  }
+
+  function togglePause() {
+    paused = !paused;
+    const btn = document.getElementById('pro-pause');
+    if (btn) btn.textContent = paused ? '▶ Resume' : '⏸ Pause';
+  }
+
+  function exportHistory() {
+    const blob = new Blob([JSON.stringify({ exportedAt: new Date().toISOString(), cpu: cpuInfo, history }, null, 2)],
+      { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'rpo-telemetry-' + Date.now() + '.json';
+    document.body.appendChild(a); a.click(); a.remove();
+    URL.revokeObjectURL(url);
+    showToast('Exported ' + history.length + ' samples');
+  }
+
+  function show() {
+    document.getElementById('pro-dashboard')?.classList.remove('hidden');
+    document.getElementById('pro-toggle')?.classList.add('hidden');
+    ensureCharts();
+    if (history.length) render();
+  }
+  function hide() {
+    document.getElementById('pro-dashboard')?.classList.add('hidden');
+    document.getElementById('pro-toggle')?.classList.remove('hidden');
+  }
+  function isVisible() {
+    return !document.getElementById('pro-dashboard')?.classList.contains('hidden');
+  }
+
+  // Wire up controls
+  document.addEventListener('click', (e) => {
+    if (e.target.classList?.contains('pill') && e.target.dataset.range) {
+      setWindow(+e.target.dataset.range);
+    }
+    if (e.target.id === 'pro-pause')    togglePause();
+    if (e.target.id === 'pro-clear')    resetStats();
+    if (e.target.id === 'pro-export')   exportHistory();
+    if (e.target.id === 'pro-collapse') hide();
+    if (e.target.id === 'pro-toggle')   show();
+  });
+
+  return { ingest, show, hide, isVisible, resetStats };
+})();
 
 async function pollStatus() {
   try {
@@ -327,9 +761,32 @@ async function pollStatus() {
     if (s.wheaEvents && s.wheaEvents.length > lastWheaCount) {
       showToast('⚠ WHEA event detected', 'error');
       document.getElementById('bodyguard').classList.add('alert');
+      playSafetyBeep();
       lastWheaCount = s.wheaEvents.length;
     }
+    renderSafetyBanner(s);
   } catch (e) { /* server may be starting */ }
+}
+
+function renderSafetyBanner(s) {
+  const el = document.getElementById('safety-banner');
+  if (!el) return;
+  const sg = s.safetyGuard;
+  if (!sg || !sg.active) { el.classList.add('hidden'); el.classList.remove('alert','warn'); return; }
+  el.classList.remove('hidden','alert','warn');
+  let cls = '';
+  if (sg.lastAbort) cls = 'alert';
+  else if (sg.lastWarning) cls = 'warn';
+  if (cls) el.classList.add(cls);
+  const violations = (sg.violations || []).map(v => `<span><strong>${v.metric}</strong> ${v.value.toFixed(2)} ≥ ${v.limit}</span>`).join(' ');
+  el.innerHTML = `<h3>🛡 Safety Guard — auto-tune watchdog</h3>
+    <div class="safety-line">
+      <span>Limits: <strong>${sg.maxTempC}°C</strong> · <strong>${sg.maxVid.toFixed(2)}V</strong> · WHEA-abort <strong>${sg.abortOnWhea ? 'ON' : 'off'}</strong></span>
+      <span>Aborts: <strong>${sg.abortCount}</strong> · step-backs: <strong>${sg.stepBackCount}</strong></span>
+    </div>
+    ${violations ? `<div class="safety-line" style="margin-top:0.4rem">Active: ${violations}</div>` : ''}
+    ${sg.lastEvent ? `<div class="muted small" style="margin-top:0.3rem">Last: ${sg.lastEvent}</div>` : ''}`;
+  if (sg.newAbort) playSafetyBeep();
 }
 
 async function loadProfiles() {
@@ -432,20 +889,31 @@ document.addEventListener('change', e => {
 });
 
 // ----- Settings (localStorage-backed) -----
-const SETTINGS_KEY = 'rpo.settings.v1';
+// v2: tabCloseShutsDown default flipped to false (Chrome memory-saver + RDP would otherwise
+// kill the service mid-test). We bump the key to force the new default on existing installs.
+const SETTINGS_KEY = 'rpo.settings.v2';
+try { localStorage.removeItem('rpo.settings.v1'); } catch (_) {}
 const settings = (() => {
   try { return JSON.parse(localStorage.getItem(SETTINGS_KEY)) || {}; } catch (_) { return {}; }
 })();
-if (typeof settings.tabCloseShutsDown !== 'boolean') settings.tabCloseShutsDown = true;
+if (typeof settings.tabCloseShutsDown !== 'boolean') settings.tabCloseShutsDown = false;
 if (typeof settings.escShutsDown !== 'boolean') settings.escShutsDown = false;
+if (typeof settings.safetyMaxTempC !== 'number') settings.safetyMaxTempC = 95;
+if (typeof settings.safetyMaxVid !== 'number') settings.safetyMaxVid = 1.45;
+if (typeof settings.safetyAutoAbortOnWhea !== 'boolean') settings.safetyAutoAbortOnWhea = true;
 
 function saveSettings() {
   try { localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings)); } catch (_) {}
-  // Tell server about heartbeat preference so it doesn't shut down on timeout when disabled
+  // Push runtime-relevant prefs (heartbeat, safety limits) to server
   fetch('/api/settings', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ heartbeatEnabled: settings.tabCloseShutsDown })
+    body: JSON.stringify({
+      heartbeatEnabled: settings.tabCloseShutsDown,
+      safetyMaxTempC: settings.safetyMaxTempC,
+      safetyMaxVid: settings.safetyMaxVid,
+      safetyAutoAbortOnWhea: settings.safetyAutoAbortOnWhea
+    })
   }).catch(() => {});
 }
 
@@ -454,11 +922,36 @@ function applySettingsToUI() {
   const esc = document.getElementById('opt-escshutdown');
   if (tab) tab.checked = settings.tabCloseShutsDown;
   if (esc) esc.checked = settings.escShutsDown;
+  const t = document.getElementById('safety-max-temp');   if (t) t.value = settings.safetyMaxTempC;
+  const v = document.getElementById('safety-max-vid');    if (v) v.value = settings.safetyMaxVid;
+  const w = document.getElementById('safety-whea-abort'); if (w) w.checked = settings.safetyAutoAbortOnWhea;
+  if (typeof settings.safetyAudioAlert !== 'boolean') settings.safetyAudioAlert = true;
+  const a = document.getElementById('safety-audio-alert'); if (a) a.checked = settings.safetyAudioAlert;
+}
+
+// Brief beep using WebAudio. No external assets needed.
+function playSafetyBeep() {
+  if (!settings.safetyAudioAlert) return;
+  try {
+    const ctx = new (window.AudioContext || window.webkitAudioContext)();
+    const o = ctx.createOscillator();
+    const g = ctx.createGain();
+    o.connect(g); g.connect(ctx.destination);
+    o.type = 'square'; o.frequency.value = 880;
+    g.gain.value = 0.08;
+    o.start();
+    setTimeout(() => { o.frequency.value = 660; }, 120);
+    setTimeout(() => { o.stop(); ctx.close(); }, 280);
+  } catch (_) {}
 }
 
 document.addEventListener('change', e => {
   if (e.target.id === 'opt-tabclose') { settings.tabCloseShutsDown = e.target.checked; saveSettings(); showToast(settings.tabCloseShutsDown ? 'Tab close will stop server' : 'Tab close will NOT stop server'); }
   if (e.target.id === 'opt-escshutdown') { settings.escShutsDown = e.target.checked; saveSettings(); showToast(settings.escShutsDown ? 'Esc will reset CO + stop server' : 'Esc will only reset CO'); }
+  if (e.target.id === 'safety-max-temp') { settings.safetyMaxTempC = +e.target.value || 95; saveSettings(); }
+  if (e.target.id === 'safety-max-vid')  { settings.safetyMaxVid = +e.target.value || 1.45; saveSettings(); }
+  if (e.target.id === 'safety-whea-abort') { settings.safetyAutoAbortOnWhea = e.target.checked; saveSettings(); }
+  if (e.target.id === 'safety-audio-alert'){ settings.safetyAudioAlert = e.target.checked; saveSettings(); }
 });
 
 // Heartbeat — server uses absence of pings to detect closed browser and shut down
@@ -487,6 +980,39 @@ window.addEventListener('pagehide', () => {
   } catch (e) { /* fire and forget */ }
 });
 
+async function checkPanicRevert() {
+  try {
+    const r = await fetchJson('/api/panic-revert');
+    if (!r.ok || !r.data) return;
+    const p = r.data;
+    const html = `<h2>⚠ Previous run crash detected</h2>
+      <p>The last session left a panic-revert breadcrumb at <code>${new Date(p.capturedAt).toLocaleString()}</code>.<br>
+      It was in the middle of <strong>${p.reason}</strong> with CO values <code>${(p.values || []).join(',')}</code>.</p>
+      <p>This usually means a BSOD or hard hang while tuning. Recommended: revert to the launch snapshot, then start the next test with safer limits.</p>
+      <div class="actions">
+        <button class="primary" id="panic-revert-apply">Revert to launch snapshot</button>
+        <button class="secondary" id="panic-revert-dismiss">Dismiss</button>
+      </div>`;
+    const banner = document.createElement('div');
+    banner.className = 'card warn';
+    banner.id = 'panic-revert-card';
+    banner.innerHTML = html;
+    document.querySelector('main').insertBefore(banner, document.querySelector('main').firstChild);
+  } catch (_) {}
+}
+
+document.addEventListener('click', async e => {
+  if (e.target.id === 'panic-revert-apply') {
+    const r = await fetchJson('/api/panic-revert/apply', { method: 'POST' });
+    if (r.ok) { showToast('Reverted to launch snapshot'); document.getElementById('panic-revert-card')?.remove(); loadCoValues(); }
+    else showToast('Revert failed: ' + r.error, 'error');
+  }
+  if (e.target.id === 'panic-revert-dismiss') {
+    await fetchJson('/api/panic-revert/dismiss', { method: 'POST' });
+    document.getElementById('panic-revert-card')?.remove();
+  }
+});
+
 document.addEventListener('DOMContentLoaded', async () => {
   try {
     applySettingsToUI();
@@ -494,6 +1020,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     await loadCpu();
     await loadCoValues();
     await loadProfiles();
+    await checkPanicRevert();
     pollTelemetry();
     pollStatus();
     sendHeartbeat();

@@ -1,3 +1,19 @@
+# ============================================================================
+#  cpu-detect.ps1 - Identify the CPU and its CCD/V-Cache topology
+# ============================================================================
+#  Used by  : server.ps1 at startup (Get-CpuInfo)
+#  Consumed by: every CO/UI/telemetry path - the returned object drives
+#  per-CCD form rendering, V-Cache labelling, CO support gating.
+#
+#  How it works: a lookup table for known consumer Ryzen models (the
+#  authoritative source of "where is the V-Cache CCD") plus a heuristic
+#  fallback (>8 cores = dual CCD, leading digit hints Zen generation).
+#  CO is supported on Zen 3 and newer.
+#
+#  When AMD releases new models: just add a row to $script:CpuOverrides.
+#  The rest of the app reads VCacheCcdIndex / IsDualCcd / CoresPerCcd
+#  from this object and doesn't need to know specific model names.
+# ============================================================================
 Set-StrictMode -Version Latest
 
 # Maps known Ryzen model suffixes to (zenGen, dualCcd, vCacheCcdIndex-or-null)

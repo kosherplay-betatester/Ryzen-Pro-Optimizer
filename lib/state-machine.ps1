@@ -1,3 +1,23 @@
+# ============================================================================
+#  state-machine.ps1 - The 6-state run-state machine
+# ============================================================================
+#  Used by  : server.ps1 (every test-related endpoint reads/writes state)
+#
+#                IDLE  ─────► APPLYING_CO  ─────► IDLE
+#                  │
+#                  └────────► TESTING ─┬─► STOPPING ─► REPORTING ─► IDLE
+#                                      └─► REPORTING ─► IDLE
+#                  (any) ───► ERROR ───► IDLE
+#
+#  Why a state machine and not ad-hoc flags: a stress test, CO apply,
+#  and the report viewer can't safely overlap. Codifying the legal
+#  transitions makes invalid combinations throw instead of silently
+#  corrupting the run (e.g. starting a test while another is stopping).
+#
+#  -Force on Set-CurrentState bypasses validation - used by panic paths
+#  (Esc reset, safety guard abort) where we always want IDLE/REPORTING
+#  reachable regardless of current state. Don't sprinkle -Force around.
+# ============================================================================
 Set-StrictMode -Version Latest
 . "$PSScriptRoot\logging.ps1"
 

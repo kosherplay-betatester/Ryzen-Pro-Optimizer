@@ -1,3 +1,22 @@
+# ============================================================================
+#  co-reader-writer.ps1 - Wraps ryzen-smu-cli for reading/writing CO
+# ============================================================================
+#  Used by  : server.ps1 (every CO endpoint), safety-guard.ps1 (step-back)
+#  Wraps    : corecycler/tools/ryzen-smu-cli/ryzen-smu-cli.exe
+#             (which talks to AMD's SMU registers via the PawnIO driver -
+#              modern replacement for the deprecated WinRing0)
+#
+#  Why a CLI wrapper instead of P/Invoking PawnIO directly: the CLI is
+#  bundled by CoreCycler, tested by sp00n's community, and gives us a
+#  stable text protocol. We just parse its --get-offsets-terse output.
+#
+#  Output format we expect (parsed by ConvertFrom-CoToolOutput):
+#       [preamble lines, maybe "Current PBO offsets:" header]
+#       -10,-10,-10,-10,-10,-10,-10,-10,-20,-20,-20,-20,-20,-20,-20,-20
+#
+#  Range check on writes is -50..+50 - matches AMD's accepted range and
+#  blocks accidental wild values from cargo-culted profiles.
+# ============================================================================
 Set-StrictMode -Version Latest
 . "$PSScriptRoot\logging.ps1"
 

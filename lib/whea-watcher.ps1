@@ -1,3 +1,25 @@
+# ============================================================================
+#  whea-watcher.ps1 - "Bodyguard": real-time WHEA hardware-error watcher
+# ============================================================================
+#  Used by  : server.ps1 (Start-WheaWatcher at startup, Get-WheaEvents
+#             from /api/status, /api/whea endpoints)
+#
+#  How it works: subscribes to the System event log filtered to
+#  Microsoft-Windows-WHEA-Logger via EventLogWatcher. The OS pushes
+#  events to us when they happen - we do not poll. Each event lands in
+#  a ConcurrentQueue so the background subscription runspace can
+#  enqueue safely while the main thread dequeues from /api/status.
+#
+#  Why WHEA matters for CO tuning: a CO offset that's slightly too deep
+#  can trigger hardware-level corrected errors *without* tripping a
+#  Prime95 software error. WHEA is the earliest signal you've gone too
+#  far. The Safety Guard hooks into this queue and aborts auto-tune on
+#  any WHEA delta during a run.
+#
+#  Persistence: bodyguard-log.json keeps the history across server
+#  restarts (so the alert badge survives a relaunch and you can
+#  review what happened overnight).
+# ============================================================================
 Set-StrictMode -Version Latest
 . "$PSScriptRoot\logging.ps1"
 

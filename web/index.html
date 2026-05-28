@@ -1,4 +1,28 @@
 <!DOCTYPE html>
+<!--
+  ============================================================================
+   index.html - Ryzen Pro Optimizer main page
+  ============================================================================
+   Page sections (top to bottom, all rendered by app.js):
+     - header               brand, WHEA bodyguard indicator, RESET CO button
+     - #cpu-info / #not-supported
+     - #telemetry-strip     compact always-on metrics row
+     - #telemetry-expanded  per-core grid (click "expand" to show)
+     - #pro-dashboard       Pro Dashboard: charts, V/F scatter, heatmap,
+                            stats grid, time-window pills, pause/reset/export
+     - #pro-toggle          button to open the dashboard when collapsed
+     - #safety-banner       live Safety Guard status (visible during runs)
+     - #co-banner           "Detected current CO" hint
+     - #curve-card          tabs: All-cores / Per-CCD / Per-core form
+     - #test-card           Manual vs Auto-Adjust radio + start/stop
+     - #status-card         live status during a test
+     - #report-card         post-test verdict + Smart Suggestions
+     - #profiles-card       saved profiles list
+     - #safety-card         configurable Safety Guard limits + audio alert
+     - #settings-card       opt-in tab-close and Esc shutdown behaviours
+     - footer               panic-key reminder
+  ============================================================================
+-->
 <html lang="en">
 <head>
 <meta charset="utf-8">
@@ -25,6 +49,63 @@
 
   <div id="telemetry-strip" class="card telemetry hidden">Loading sensors…</div>
   <div id="telemetry-expanded" class="card hidden"></div>
+
+  <!-- Pro Dashboard: live graphs + stats. Auto-shows during a test; toggle button always available. -->
+  <section id="pro-dashboard" class="card pro-dashboard hidden">
+    <div class="pro-header">
+      <h2>📊 Pro Dashboard</h2>
+      <div class="pro-controls">
+        <span class="pro-range-label">Window:</span>
+        <button class="pill" data-range="60">60s</button>
+        <button class="pill active" data-range="180">3m</button>
+        <button class="pill" data-range="600">10m</button>
+        <button class="pill" data-range="1800">30m</button>
+        <button class="secondary" id="pro-pause" title="Pause/resume live updates">⏸ Pause</button>
+        <button class="secondary" id="pro-clear" title="Reset min/max/avg counters">↺ Reset stats</button>
+        <button class="secondary" id="pro-export" title="Download history as JSON">⤓ Export</button>
+        <button class="secondary" id="pro-collapse" title="Hide dashboard">×</button>
+      </div>
+    </div>
+
+    <div class="stats-grid" id="stats-grid">
+      <div class="stat-tile"><div class="stat-label">Pkg Temp</div><div class="stat-value" id="st-temp">—</div><div class="stat-extra">min <span id="st-temp-min">—</span> · avg <span id="st-temp-avg">—</span> · <span class="stat-peak">max <span id="st-temp-max">—</span></span></div></div>
+      <div class="stat-tile"><div class="stat-label">Pkg Power</div><div class="stat-value" id="st-pwr">—</div><div class="stat-extra">min <span id="st-pwr-min">—</span> · avg <span id="st-pwr-avg">—</span> · <span class="stat-peak">max <span id="st-pwr-max">—</span></span></div></div>
+      <div class="stat-tile"><div class="stat-label">Avg Clock</div><div class="stat-value" id="st-clk">—</div><div class="stat-extra">min <span id="st-clk-min">—</span> · avg <span id="st-clk-avg">—</span> · <span class="stat-peak">max <span id="st-clk-max">—</span></span></div></div>
+      <div class="stat-tile"><div class="stat-label">Avg VID</div><div class="stat-value" id="st-vid">—</div><div class="stat-extra">min <span id="st-vid-min">—</span> · avg <span id="st-vid-avg">—</span> · <span class="stat-peak">max <span id="st-vid-max">—</span></span></div></div>
+      <div class="stat-tile"><div class="stat-label">Hottest Core</div><div class="stat-value" id="st-hot">—</div><div class="stat-extra"><span id="st-hot-core">—</span></div></div>
+      <div class="stat-tile"><div class="stat-label">Avg Load</div><div class="stat-value" id="st-load">—</div><div class="stat-extra">samples <span id="st-samples">0</span></div></div>
+    </div>
+
+    <div class="chart-grid">
+      <div class="chart-box">
+        <div class="chart-title">Per-core clock (MHz)</div>
+        <canvas id="chart-clock"></canvas>
+      </div>
+      <div class="chart-box">
+        <div class="chart-title">Temperature (°C)</div>
+        <canvas id="chart-temp"></canvas>
+      </div>
+      <div class="chart-box">
+        <div class="chart-title">Per-core voltage (V)</div>
+        <canvas id="chart-vid"></canvas>
+      </div>
+      <div class="chart-box">
+        <div class="chart-title">Package power (W)</div>
+        <canvas id="chart-power"></canvas>
+      </div>
+      <div class="chart-box chart-wide">
+        <div class="chart-title">Boost map — voltage × clock (per-core scatter, current snapshot)</div>
+        <canvas id="chart-vf"></canvas>
+      </div>
+    </div>
+
+    <div class="core-heatmap" id="core-heatmap"></div>
+  </section>
+
+  <button id="pro-toggle" class="secondary pro-toggle">📊 Open Pro Dashboard</button>
+
+  <!-- Safety guard banner (auto-tune): shows live during auto-adjust runs -->
+  <div id="safety-banner" class="card safety-banner hidden"></div>
 
   <div id="co-banner" class="card hidden"></div>
 
@@ -103,13 +184,30 @@
     <div id="profiles-list" class="muted">No profiles yet.</div>
   </section>
 
+  <section class="card" id="safety-card">
+    <h2>🛡 Safety Guards (auto-tune)</h2>
+    <p class="muted small">Hard limits that abort Auto-Adjust the instant they're exceeded. Combined with the WHEA Bodyguard, these prevent the kind of silent slide into BSOD that a remote session can leave you blind to.</p>
+    <div class="co-input"><label>Max core temperature (°C):</label><input type="number" id="safety-max-temp" min="50" max="105" value="95"><span class="muted small">(7950X3D thermal throttle ~89°C, hard limit 95°C)</span></div>
+    <div class="co-input"><label>Max core VID (V):</label><input type="number" id="safety-max-vid" min="0.9" max="1.55" step="0.01" value="1.45"><span class="muted small">(AMD spec ≤1.45V for Zen 4/5 daily)</span></div>
+    <label class="setting-row">
+      <input type="checkbox" id="safety-whea-abort" checked>
+      <span><strong>Auto-abort on WHEA warning</strong><br>
+      <span class="muted small">When a WHEA hardware-error event fires during Auto-Adjust, immediately stop, step back one increment on the offending core, and re-snapshot. Default on.</span></span>
+    </label>
+    <label class="setting-row">
+      <input type="checkbox" id="safety-audio-alert" checked>
+      <span><strong>Audio alert on WHEA / safety abort</strong><br>
+      <span class="muted small">Plays a short browser beep when something dangerous happens — useful if you're away from the desk during a long run.</span></span>
+    </label>
+  </section>
+
   <section class="card" id="settings-card">
     <h2>⚙ Shutdown behavior</h2>
     <p class="muted small">Pick what should stop the service. The server's terminal window (Ctrl+C or closing the cmd window) <strong>always</strong> stops it — that's the master switch.</p>
     <label class="setting-row">
-      <input type="checkbox" id="opt-tabclose" checked>
+      <input type="checkbox" id="opt-tabclose">
       <span><strong>Closing the browser tab/window stops the service</strong><br>
-      <span class="muted small">Reverts CO to launch values and shuts down the server when the browser disconnects (heartbeat timeout 20s). Enabled by default — disable if you want to close the browser but keep the service running in the background.</span></span>
+      <span class="muted small">⚠ <strong>Disabled by default.</strong> Chrome's memory-saver and RDP disconnects look like a closed tab and would otherwise kill the service mid-test. When enabled, the server reverts CO to launch values and shuts down after a 3-minute heartbeat silence. Recommended only on a dedicated tuning bench where you trust the browser will stay foregrounded.</span></span>
     </label>
     <label class="setting-row">
       <input type="checkbox" id="opt-escshutdown">
@@ -127,9 +225,10 @@
 
 <footer class="footer">
   <div>⚠ Stuck or unstable? Press <kbd>Esc</kbd> to instantly reset all cores to 0.</div>
-  <div class="footer-secondary">ℹ Shutdown triggers (tab close, Esc) are configurable at the bottom of the page. Closing the terminal window or pressing Ctrl+C in it always stops the service.</div>
+  <div class="footer-secondary">ℹ Service runs until you press <kbd>Ctrl+C</kbd> in its terminal window or close that window. Tab-close auto-shutdown is opt-in (see ⚙ Shutdown behavior).</div>
 </footer>
 
+<script src="/vendor/chart.umd.js"></script>
 <script src="/app.js"></script>
 </body>
 </html>

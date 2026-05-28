@@ -1,3 +1,20 @@
+# ============================================================================
+#  profile-store.ps1 - Named CO presets saved as JSON files
+# ============================================================================
+#  Used by  : server.ps1 (/api/profiles endpoints)
+#  Storage  : repo's profiles/ directory (gitignored - your settings are
+#             personal)
+#
+#  Each profile is a single .json file. Schema includes the CPU model
+#  it was captured on so the UI can warn before applying a 7950X3D
+#  profile to a 5800X (would set offsets on cores that don't exist or
+#  with wrong CCD mapping).
+#
+#  Why files instead of a single index: easy to inspect, copy between
+#  machines, version-control your favourites. The filename uses a
+#  sanitised version of the profile name (Get-SafeProfileName strips
+#  path-injection chars).
+# ============================================================================
 Set-StrictMode -Version Latest
 
 $script:ProfilesDir = $null

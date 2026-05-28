@@ -1,3 +1,21 @@
+# ============================================================================
+#  smart-suggestions.ps1 - Human-readable "what to do next" hints
+# ============================================================================
+#  Used by  : server.ps1 (Build-Report) - appended to the report so the
+#             UI can render them under "Smart Suggestions"
+#
+#  How the rules work: the suggestion engine looks at the report
+#  verdict, the CO mode used (all-cores / per-ccd / per-core), the
+#  list of failed cores, and the CPU topology. It returns a list of
+#  short strings - the UI renders them as bullets.
+#
+#  Why hardcoded rules instead of an LLM/heuristic black box: the
+#  recommendations are testable, deterministic, and explain WHY they
+#  say what they say (e.g. "V-Cache CCDs usually wall at -15 to -20"
+#  beats "try a different value"). Add new rules here by extending
+#  the switch on verdict / mode / failure pattern - keep each rule
+#  one user-facing sentence.
+# ============================================================================
 Set-StrictMode -Version Latest
 
 function Get-SmartSuggestions {
