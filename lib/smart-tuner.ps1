@@ -106,3 +106,43 @@ function Step-OneProbe {
     $result = & $ProbeFn
     Update-ScopeFromResult -ScopeState $ScopeState -Candidate $candidate -Result $result
 }
+
+# Returns a value in [0, 1] describing how far we are from the safety
+# limits. 1.0 = lots of headroom, 0.0 = at or past a limit.
+# Used by the search engine to shrink step sizes near the edge.
+function Get-TelemetryHeadroom {
+    param(
+        $Snapshot,
+        [Parameter(Mandatory)][int]$MaxTempC,
+        [Parameter(Mandatory)][double]$MaxVid
+    )
+    if ($null -eq $Snapshot) { return 0.0 }
+    $temp = if ($null -ne $Snapshot.packageTemp) { [double]$Snapshot.packageTemp } else { 0.0 }
+    $vid  = 0.0
+    foreach ($c in @($Snapshot.cores)) {
+        if ($null -ne $c.voltage -and $c.voltage -gt $vid) { $vid = [double]$c.voltage }
+    }
+    $tHead = [Math]::Max(0.0, [Math]::Min(1.0, ($MaxTempC - $temp) / [double]$MaxTempC))
+    $vHead = [Math]::Max(0.0, [Math]::Min(1.0, ($MaxVid  - $vid)  / [double]$MaxVid))
+    [Math]::Min($tHead, $vHead)
+}
+
+# Loop Step-OneProbe until convergence or MaxProbes hit. Pure logic,
+# I/O is in the injected scriptblocks.
+function Tune-Scope {
+    param(
+        [Parameter(Mandatory)]$ScopeState,
+        [Parameter(Mandatory)]$Policy,
+        [Parameter(Mandatory)][scriptblock]$ProbeFn,
+        [Parameter(Mandatory)][scriptblock]$ApplyFn,
+        [Parameter(Mandatory)][scriptblock]$HeadroomFn,
+        [int]$MaxProbes = 12
+    )
+    $state = $ScopeState
+    while (-not (Test-ScopeConverged -ScopeState $state) -and $state.probesCompleted -lt $MaxProbes) {
+        $headroom = [double](& $HeadroomFn)
+        $state = Step-OneProbe -ScopeState $state -Policy $Policy `
+            -ProbeFn $ProbeFn -ApplyFn $ApplyFn -TelemetryHeadroom $headroom
+    }
+    $state
+}

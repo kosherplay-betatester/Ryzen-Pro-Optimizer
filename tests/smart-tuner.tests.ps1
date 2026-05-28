@@ -113,3 +113,49 @@ Describe 'Step-OneProbe' {
         $locked | Should -Not -Be $null
     }
 }
+
+Describe 'Tune-Scope' {
+    It 'iterates Step-OneProbe until convergence, returns final state' {
+        $policy = Get-ModePolicy -Mode 'daily-driver' -Direction 'undervolt'
+        $scope  = New-ScopeState -ScopeId 'CCD0' -IsVCache $false -SeedValue 0 -Policy $policy
+        $script:applied = @()
+        $applyFn = { param($v) $script:applied += $v }
+        # Scripted probes: 4 PASS then FAIL_WHEA -> should converge fast
+        $script:i = 0
+        $script:results = @('PASS','PASS','PASS','PASS','FAIL_WHEA','FAIL_WHEA','FAIL_WHEA','FAIL_WHEA')
+        $probeFn = { $r = $script:results[$script:i]; $script:i = [Math]::Min($script:i+1, $script:results.Count-1); $r }
+        $headroomFn = { 1.0 }
+        $final = Tune-Scope -ScopeState $scope -Policy $policy `
+            -ProbeFn $probeFn -ApplyFn $applyFn -HeadroomFn $headroomFn -MaxProbes 20
+        Test-ScopeConverged -ScopeState $final | Should -BeTrue
+        $final.probesCompleted | Should -BeLessThan 20
+    }
+    It 'stops at MaxProbes safety cap even if not converged' {
+        $policy = Get-ModePolicy -Mode 'daily-driver' -Direction 'undervolt'
+        $scope  = New-ScopeState -ScopeId 'CCD0' -IsVCache $false -SeedValue 0 -Policy $policy
+        $probeFn = { 'PASS' }   # would loop forever without cap
+        $applyFn = { }
+        $headroomFn = { 1.0 }
+        $final = Tune-Scope -ScopeState $scope -Policy $policy `
+            -ProbeFn $probeFn -ApplyFn $applyFn -HeadroomFn $headroomFn -MaxProbes 5
+        $final.probesCompleted | Should -Be 5
+    }
+}
+
+Describe 'Get-TelemetryHeadroom' {
+    It 'returns positive value when both temp and VID under limits' {
+        $snap = [PSCustomObject]@{
+            packageTemp = 50; cores = @([PSCustomObject]@{ voltage = 1.0 })
+        }
+        Get-TelemetryHeadroom -Snapshot $snap -MaxTempC 95 -MaxVid 1.45 | Should -BeGreaterThan 0.2
+    }
+    It 'returns 0.0 when temp is at limit' {
+        $snap = [PSCustomObject]@{
+            packageTemp = 95; cores = @([PSCustomObject]@{ voltage = 1.0 })
+        }
+        Get-TelemetryHeadroom -Snapshot $snap -MaxTempC 95 -MaxVid 1.45 | Should -Be 0.0
+    }
+    It 'returns 0.0 on null snapshot (defensive default)' {
+        Get-TelemetryHeadroom -Snapshot $null -MaxTempC 95 -MaxVid 1.45 | Should -Be 0.0
+    }
+}
