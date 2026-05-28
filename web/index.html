@@ -31,6 +31,45 @@
 <link rel="stylesheet" href="/style.css">
 </head>
 <body>
+<!-- Startup disclaimer: blocks the UI until the user explicitly accepts.
+     Acceptance is persisted in localStorage (key rpo.disclaimerAccepted). -->
+<div id="disclaimer-overlay" class="disclaimer-overlay hidden">
+  <div class="disclaimer-card">
+    <div class="disclaimer-icon">⚠</div>
+    <h2>Read this before you tune</h2>
+    <p class="disclaimer-lead">
+      Ryzen Pro Optimizer writes to your CPU's SMU registers and runs intense stress tests.
+      These actions <strong>can crash your system</strong>. By continuing, you accept the
+      following risks:
+    </p>
+    <ul class="disclaimer-risks">
+      <li><strong>BSOD / hard hangs.</strong> Aggressive Curve Optimizer offsets can lock Windows mid-task. If this happens during a write-heavy operation, you can lose unsaved work and corrupt files.</li>
+      <li><strong>Remote-session blindness.</strong> If you're tuning over RDP and the system BSODs, you may not regain access until someone physically resets the machine.</li>
+      <li><strong>Worst-case CMOS reset.</strong> A profile that boots and immediately crashes can leave you having to clear CMOS (jumper or coin-cell pull) to recover BIOS access.</li>
+      <li><strong>Hardware wear.</strong> Running Prime95 at full load generates a lot of heat and pulls high current. Verify your cooling and PSU headroom before long runs.</li>
+      <li><strong>WHEA = stop.</strong> A WHEA event during stress testing is a hardware-corrected error. Back off the CO offset immediately — don't keep pushing.</li>
+      <li><strong>Settings are temporary.</strong> CO writes live in SMU registers until next reboot. To make a profile permanent, write it to BIOS yourself.</li>
+    </ul>
+    <p class="disclaimer-safety">
+      Your safety nets: the <kbd>Esc</kbd> panic-reset key, the always-visible <strong>RESET CO</strong> button,
+      the Safety Guard (auto-aborts on temp/voltage/WHEA breaches), the panic-revert breadcrumb
+      (survives BSODs so the next boot can roll back), and BIOS — which always wins on next power cycle.
+    </p>
+    <p class="disclaimer-lead">
+      <strong>Use at your own risk.</strong> The authors and contributors are not liable for any
+      damage, data loss, or downtime. If you're not comfortable with that, close this tab now.
+    </p>
+    <div class="actions">
+      <button id="disclaimer-accept" class="primary">I understand the risks · Continue</button>
+      <button id="disclaimer-decline" class="secondary">Close tab</button>
+    </div>
+    <label class="disclaimer-remember">
+      <input type="checkbox" id="disclaimer-dont-show" checked>
+      Don't show this again on this browser (you can clear it via Settings)
+    </label>
+  </div>
+</div>
+
 <header>
   <div class="brand">
     <span class="logo">⚡</span>
@@ -263,6 +302,9 @@
       <span class="muted small">When enabled, Esc still resets CO to 0 instantly, but also tears down the server. When disabled (default), Esc is just a panic reset and the service stays up.</span></span>
     </label>
     <p class="muted small">Settings are saved in your browser (localStorage) — they survive reloads.</p>
+    <div class="actions" style="margin-top:0.8rem">
+      <button id="show-disclaimer-again" class="secondary" title="Re-display the startup risk disclaimer">⚠ Show risk disclaimer again</button>
+    </div>
   </section>
 </main>
 

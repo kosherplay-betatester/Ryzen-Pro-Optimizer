@@ -1034,8 +1034,63 @@ document.addEventListener('click', async e => {
   }
 });
 
+// =============================================================================
+//  Startup disclaimer - blocks the UI until the user accepts the risks.
+//  Acceptance is persisted under rpo.disclaimerAccepted (versioned, so we
+//  can re-prompt if we update the wording in a future release).
+// =============================================================================
+const DISCLAIMER_VERSION = 'v1';
+const DISCLAIMER_KEY = 'rpo.disclaimerAccepted';
+
+function disclaimerAlreadyAccepted() {
+  try { return localStorage.getItem(DISCLAIMER_KEY) === DISCLAIMER_VERSION; }
+  catch (_) { return false; }
+}
+
+function showDisclaimer() {
+  const overlay = document.getElementById('disclaimer-overlay');
+  if (!overlay) return;
+  overlay.classList.remove('hidden');
+  // Trap focus on the accept button for keyboard users
+  const accept = document.getElementById('disclaimer-accept');
+  if (accept) accept.focus();
+}
+
+function dismissDisclaimer(accepted) {
+  const overlay = document.getElementById('disclaimer-overlay');
+  if (!overlay) return;
+  if (accepted) {
+    const remember = document.getElementById('disclaimer-dont-show');
+    if (remember && remember.checked) {
+      try { localStorage.setItem(DISCLAIMER_KEY, DISCLAIMER_VERSION); } catch (_) {}
+    }
+    overlay.classList.add('hidden');
+  } else {
+    // "Close tab" - try window.close(), fall back to navigating away
+    try { window.close(); } catch (_) {}
+    // Some browsers refuse window.close on non-script-opened tabs - show a message
+    overlay.querySelector('.disclaimer-card').innerHTML =
+      '<h2>Please close this tab.</h2><p class="disclaimer-lead">Your browser blocked the auto-close. ' +
+      'Closing the tab now stops nothing on the server side - the service keeps running until you ' +
+      'press Ctrl+C in its terminal window.</p>';
+  }
+}
+
+document.addEventListener('click', e => {
+  if (e.target.id === 'disclaimer-accept')  dismissDisclaimer(true);
+  if (e.target.id === 'disclaimer-decline') dismissDisclaimer(false);
+  if (e.target.id === 'show-disclaimer-again') {
+    try { localStorage.removeItem(DISCLAIMER_KEY); } catch (_) {}
+    showDisclaimer();
+  }
+});
+
 document.addEventListener('DOMContentLoaded', async () => {
   try {
+    // Disclaimer comes first - if not accepted, show it. Initial loads
+    // still happen behind it (the overlay just blocks interaction).
+    if (!disclaimerAlreadyAccepted()) showDisclaimer();
+
     applySettingsToUI();
     saveSettings();  // push current preferences to server on load
     await loadCpu();

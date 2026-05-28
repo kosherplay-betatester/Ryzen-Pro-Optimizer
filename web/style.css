@@ -443,3 +443,60 @@ kbd { background: var(--border); padding: 0.1rem 0.4rem; border-radius: 3px; fon
 .narr-line { padding: 0.05rem 0; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .narr-line .narr-ts   { color: var(--muted); margin-right: 0.4rem; }
 .narr-line .narr-icon { margin-right: 0.3rem; }
+
+/* ============ Disclaimer overlay ============ */
+.disclaimer-overlay {
+  position: fixed; inset: 0; z-index: 9999;
+  background: rgba(8, 12, 20, 0.92);
+  backdrop-filter: blur(4px);
+  display: flex; align-items: center; justify-content: center;
+  padding: 1.5rem;
+  overflow-y: auto;
+  animation: disclaimer-fade-in 0.2s ease-out;
+}
+@keyframes disclaimer-fade-in { from { opacity: 0; } to { opacity: 1; } }
+.disclaimer-card {
+  max-width: 640px;
+  width: 100%;
+  background: var(--card);
+  border: 1px solid var(--danger);
+  border-radius: 10px;
+  padding: 1.6rem 1.8rem;
+  box-shadow: 0 12px 48px rgba(0,0,0,0.6), 0 0 0 1px rgba(237,28,36,0.25);
+  color: var(--text);
+  line-height: 1.55;
+}
+.disclaimer-icon {
+  font-size: 2.4rem; line-height: 1; text-align: center;
+  margin-bottom: 0.4rem; color: var(--warning);
+}
+.disclaimer-card h2 {
+  color: var(--danger); font-size: 1.4rem; text-align: center;
+  margin: 0 0 1rem 0;
+}
+.disclaimer-lead { font-size: 0.95rem; margin: 0.5rem 0; }
+.disclaimer-risks {
+  margin: 0.6rem 0 1rem; padding-left: 1.2rem;
+  font-size: 0.88rem;
+}
+.disclaimer-risks li { margin: 0.45rem 0; }
+.disclaimer-risks li strong { color: var(--warning); }
+.disclaimer-safety {
+  background: rgba(16, 185, 129, 0.08);
+  border-left: 3px solid var(--success);
+  padding: 0.7rem 0.9rem;
+  border-radius: 0 4px 4px 0;
+  margin: 1rem 0;
+  font-size: 0.88rem;
+}
+.disclaimer-safety strong { color: var(--success); }
+.disclaimer-card .actions {
+  margin-top: 1.2rem;
+  justify-content: center;
+}
+.disclaimer-remember {
+  display: flex; align-items: center; gap: 0.4rem;
+  margin-top: 0.9rem; font-size: 0.8rem; color: var(--muted);
+  justify-content: center; cursor: pointer;
+}
+.disclaimer-remember input { cursor: pointer; }
