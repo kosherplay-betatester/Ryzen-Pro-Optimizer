@@ -67,3 +67,49 @@ Describe 'Plan-TuneSession' {
         @($plan | Where-Object { $_.id -match '^core' }).Count | Should -Be 16
     }
 }
+
+Describe 'Step-OneProbe' {
+    BeforeEach {
+        $script:policy = Get-ModePolicy -Mode 'daily-driver' -Direction 'undervolt'
+        $script:scope = New-ScopeState -ScopeId 'CCD0' -IsVCache $false -SeedValue 0 -Policy $script:policy
+        $script:applied = $null
+        $script:applyFn = { param($v) $applied = $v }
+    }
+    It 'updates scope after one probe (PASS case)' {
+        $probeFn = { 'PASS' }
+        $new = Step-OneProbe -ScopeState $script:scope -Policy $script:policy `
+            -ProbeFn $probeFn -ApplyFn $script:applyFn -TelemetryHeadroom 1.0
+        $new.probesCompleted | Should -Be 1
+        $new.lastResult      | Should -Be 'PASS'
+        $new.knownStable     | Should -Not -Be $null
+        $new.lastCandidate   | Should -Not -Be $null
+    }
+    It 'updates scope after one probe (FAIL_WHEA case)' {
+        $probeFn = { 'FAIL_WHEA' }
+        $new = Step-OneProbe -ScopeState $script:scope -Policy $script:policy `
+            -ProbeFn $probeFn -ApplyFn $script:applyFn -TelemetryHeadroom 1.0
+        $new.lastResult    | Should -Be 'FAIL_WHEA'
+        $new.knownUnstable | Should -Not -Be $null
+    }
+    It 'converges to lock value after a scripted sequence' {
+        $script:results = @('PASS','PASS','FAIL_P95','PASS','FAIL_WHEA')
+        $script:i = 0
+        $probeFn = {
+            if ($script:i -ge $script:results.Count) { return 'PASS' }
+            $r = $script:results[$script:i]
+            $script:i++
+            $r
+        }
+        $state = $script:scope
+        $maxProbes = 10
+        $probeCount = 0
+        while (-not (Test-ScopeConverged -ScopeState $state) -and $probeCount -lt $maxProbes) {
+            $state = Step-OneProbe -ScopeState $state -Policy $script:policy `
+                -ProbeFn $probeFn -ApplyFn $script:applyFn -TelemetryHeadroom 1.0
+            $probeCount++
+        }
+        Test-ScopeConverged -ScopeState $state | Should -BeTrue
+        $locked = Get-LockInValue -ScopeState $state -Policy $script:policy
+        $locked | Should -Not -Be $null
+    }
+}

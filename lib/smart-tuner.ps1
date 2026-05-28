@@ -83,3 +83,26 @@ function Plan-TuneSession {
     }
     , @($scopes.ToArray())
 }
+
+# One iteration of the bisection for one scope:
+#   1. Compute candidate via Get-NextCandidate (modulated by telemetry)
+#   2. Apply CO via $ApplyFn (caller's responsibility - usually
+#      Set-AllCoreCo wrapped in panic-revert)
+#   3. Run probe via $ProbeFn (returns one of the result strings)
+#   4. Update state via Update-ScopeFromResult
+#
+# Factored so tests can inject a fake $ProbeFn and $ApplyFn - real
+# orchestrator uses Invoke-Probe and Save-PanicRevertState + Set-AllCoreCo.
+function Step-OneProbe {
+    param(
+        [Parameter(Mandatory)]$ScopeState,
+        [Parameter(Mandatory)]$Policy,
+        [Parameter(Mandatory)][scriptblock]$ProbeFn,
+        [Parameter(Mandatory)][scriptblock]$ApplyFn,
+        [Parameter(Mandatory)][double]$TelemetryHeadroom
+    )
+    $candidate = Get-NextCandidate -ScopeState $ScopeState -TelemetryHeadroom $TelemetryHeadroom -Policy $Policy
+    & $ApplyFn $candidate
+    $result = & $ProbeFn
+    Update-ScopeFromResult -ScopeState $ScopeState -Candidate $candidate -Result $result
+}
