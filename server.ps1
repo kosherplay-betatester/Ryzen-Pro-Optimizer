@@ -23,7 +23,7 @@ $isAdmin = (New-Object System.Security.Principal.WindowsPrincipal([System.Securi
 if (-not $isAdmin) {
     Write-Host ''
     Write-Host 'ERROR: Ryzen Pro Optimizer must run as administrator.' -ForegroundColor Red
-    Write-Host 'Right-click Launch.bat and Run as Administrator (or just use Launch.bat — it self-elevates).'
+    Write-Host 'Right-click Launch.bat and Run as Administrator (or just use Launch.bat - it self-elevates).'
     Write-Host ''
     Read-Host 'Press Enter to exit'
     exit 1
@@ -66,7 +66,7 @@ $wheaActive = Start-WheaWatcher
 function Invoke-GracefulShutdown {
     Write-Log INFO "Graceful shutdown initiated"
     Write-Host ""
-    Write-Host "Shutting down — reverting CO and cleaning up..." -ForegroundColor Yellow
+    Write-Host "Shutting down - reverting CO and cleaning up..." -ForegroundColor Yellow
 
     # If a test is running, stop it
     if ($runnerReady -and (Test-CoreCyclerRunning)) {
@@ -92,7 +92,7 @@ function Invoke-GracefulShutdown {
     $script:ShutdownRequested = $true
 }
 
-# Initialize CO tool (best effort — server can still run if missing, just shows error)
+# Initialize CO tool (best effort - server can still run if missing, just shows error)
 $coReady = $false
 $launchSnapshot = $null
 if ($cpu.SupportsCurveOptimizer) {
@@ -120,7 +120,7 @@ Register-Route -Method GET -Path '/api/cpu' -Handler {
 }
 
 Register-Route -Method GET -Path '/api/co/current' -Handler {
-    if (-not $coReady) { return @{ ok = $false; error = 'CO tool not initialized — run Install.bat' } }
+    if (-not $coReady) { return @{ ok = $false; error = 'CO tool not initialized - run Install.bat' } }
     @{ ok = $true; data = (Get-AllCoreCo -CoreCount $cpu.Cores) }
 }
 

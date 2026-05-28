@@ -31,7 +31,7 @@ function ConvertFrom-CoToolOutput {
     function _parseCommaLine([string]$line) {
         $parts = $line -split ','
         $ints = @($parts | Where-Object { $_ -match '^\s*-?\d+\s*$' } | ForEach-Object { [int]$_.Trim() })
-        # Require ALL comma-separated parts to be integers — otherwise this is not a data line
+        # Require ALL comma-separated parts to be integers - otherwise this is not a data line
         if ($ints.Count -eq $parts.Count -and $ints.Count -gt 0) { return $ints }
         return $null
     }

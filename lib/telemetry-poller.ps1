@@ -3,7 +3,7 @@ Set-StrictMode -Version Latest
 
 # On-demand sensor polling. The HTTP server thread calls Read-TelemetrySnapshot
 # each time /api/telemetry is hit (browser polls at 1Hz). Peak tracking happens
-# inline when state machine is TESTING — also called from the HTTP handler.
+# inline when state machine is TESTING - also called from the HTTP handler.
 
 $script:Computer = $null
 $script:History = New-Object System.Collections.Generic.List[object]

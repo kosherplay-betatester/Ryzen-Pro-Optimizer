@@ -174,7 +174,7 @@ function Test-LhmInstalled {
     Test-Path (Join-Path $VendorDir 'LibreHardwareMonitorLib.dll')
 }
 
-# Entry point — only run when invoked directly, not dot-sourced
+# Entry point - only run when invoked directly, not dot-sourced
 if ($MyInvocation.InvocationName -ne '.') {
     try {
         if (-not (Test-CoreCyclerInstalled)) {

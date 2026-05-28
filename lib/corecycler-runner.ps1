@@ -2,7 +2,7 @@ Set-StrictMode -Version Latest
 . "$PSScriptRoot\logging.ps1"
 
 # Manages a CoreCycler subprocess: config generation, spawn, log discovery, live tail.
-# Does not implement its own stress logic — entirely orchestrates the existing CoreCycler script.
+# Does not implement its own stress logic - entirely orchestrates the existing CoreCycler script.
 
 $script:CcProcess = $null
 $script:CcDir = $null
@@ -127,7 +127,7 @@ function Stop-CoreCyclerRun {
     try {
         # Try graceful Ctrl+C via console signal first
         try {
-            # Best effort — uses native API; may not work if CoreCycler is in its own console
+            # Best effort - uses native API; may not work if CoreCycler is in its own console
             $sigSent = $false
             $kernel32 = Add-Type -Name K32 -Namespace W32 -PassThru -MemberDefinition @'
                 [DllImport("kernel32.dll")] public static extern bool AttachConsole(uint dwProcessId);
