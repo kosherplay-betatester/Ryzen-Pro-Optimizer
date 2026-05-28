@@ -101,3 +101,33 @@ function Get-Confidence {
     $fails  = @($entries | Where-Object { $_.result -in 'FAIL_P95','FAIL_WHEA','ABORT_CRASH','TIMEOUT' }).Count
     $passes - $fails
 }
+
+# Cap the JSONL file at MaxEntries. Crash entries (FAIL_WHEA,
+# ABORT_CRASH) are NEVER pruned - they're the most valuable signal.
+# Among prunable entries, oldest go first. Atomic rewrite via temp file.
+function Compact-History {
+    param(
+        [Parameter(Mandatory)][string]$Path,
+        [Parameter(Mandatory)][int]$MaxEntries
+    )
+    if (-not (Test-Path $Path)) { return }
+    $all = @(Get-Content -Path $Path -ErrorAction SilentlyContinue | ForEach-Object {
+        try { $_ | ConvertFrom-Json } catch { $null }
+    } | Where-Object { $_ -ne $null })
+    if ($all.Count -le $MaxEntries) { return }
+
+    $crashes = @($all | Where-Object { $_.result -in 'FAIL_WHEA','ABORT_CRASH' })
+    $others  = @($all | Where-Object { $_.result -notin 'FAIL_WHEA','ABORT_CRASH' })
+    $keepOthers = [Math]::Max(0, $MaxEntries - $crashes.Count)
+
+    # Sort others by timestamp descending (newest first), keep the first $keepOthers
+    $kept = @($others | Sort-Object -Property ts -Descending | Select-Object -First $keepOthers)
+    $final = @($crashes) + $kept | Sort-Object -Property ts
+
+    $tmp = "$Path.tmp"
+    if (Test-Path $tmp) { Remove-Item $tmp -Force }
+    foreach ($e in $final) {
+        Add-Content -Path $tmp -Value ($e | ConvertTo-Json -Depth 6 -Compress) -Encoding UTF8
+    }
+    Move-Item -Force $tmp $Path
+}
