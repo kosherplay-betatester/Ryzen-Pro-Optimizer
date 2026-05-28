@@ -1022,6 +1022,26 @@ async function checkPanicRevert() {
   } catch (_) {}
 }
 
+async function checkPendingSmartSession() {
+  try {
+    const r = await fetchJson('/api/smart-tune/pending-session');
+    if (!r.ok || !r.data) return;
+    const p = r.data;
+    const html = `<h2>⏸ Smart Tune session was in progress when the system stopped</h2>
+      <p>Mode: <strong>${p.mode || '?'}</strong> · status when stopped: <strong>${p.status || '?'}</strong></p>
+      <p>You can resume from this point, or discard the session and start fresh.</p>
+      <div class="actions">
+        <button class="primary" id="smart-resume">Resume</button>
+        <button class="secondary" id="smart-discard">Discard</button>
+      </div>`;
+    const banner = document.createElement('div');
+    banner.className = 'card warn';
+    banner.id = 'smart-pending-card';
+    banner.innerHTML = html;
+    document.querySelector('main').insertBefore(banner, document.querySelector('main').firstChild);
+  } catch (_) {}
+}
+
 document.addEventListener('click', async e => {
   if (e.target.id === 'panic-revert-apply') {
     const r = await fetchJson('/api/panic-revert/apply', { method: 'POST' });
@@ -1031,6 +1051,21 @@ document.addEventListener('click', async e => {
   if (e.target.id === 'panic-revert-dismiss') {
     await fetchJson('/api/panic-revert/dismiss', { method: 'POST' });
     document.getElementById('panic-revert-card')?.remove();
+  }
+  if (e.target.id === 'smart-resume') {
+    const r = await fetchJson('/api/smart-tune/resume', { method: 'POST' });
+    if (r.ok) {
+      showToast('Smart Tune resumed');
+      document.getElementById('smart-pending-card')?.remove();
+      SmartTune.show();
+    } else {
+      showToast('Resume failed: ' + r.error, 'error');
+    }
+  }
+  if (e.target.id === 'smart-discard') {
+    await fetchJson('/api/smart-tune/discard', { method: 'POST' });
+    document.getElementById('smart-pending-card')?.remove();
+    showToast('Discarded');
   }
 });
 
@@ -1097,6 +1132,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     await loadCoValues();
     await loadProfiles();
     await checkPanicRevert();
+    await checkPendingSmartSession();
     pollTelemetry();
     pollStatus();
     sendHeartbeat();
