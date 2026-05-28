@@ -42,3 +42,44 @@ function Clear-TuneSession {
     param([Parameter(Mandatory)][string]$Path)
     if (Test-Path $Path) { Remove-Item $Path -Force -ErrorAction SilentlyContinue }
 }
+
+# Build the list of scopes to probe, in order. V-Cache CCD always first
+# (failing fast on the tighter silicon is safer than failing late after
+# a long Standard run). Per-core scopes appended when policy demands.
+function Plan-TuneSession {
+    param(
+        [Parameter(Mandatory)]$Cpu,
+        [Parameter(Mandatory)]$Policy
+    )
+    $scopes = New-Object System.Collections.Generic.List[object]
+    $vCacheIdx = $Cpu.VCacheCcdIndex
+    $ccdOrder = if ($null -ne $vCacheIdx) {
+        @($vCacheIdx) + @(0..($Cpu.CcdCount - 1) | Where-Object { $_ -ne $vCacheIdx })
+    } else {
+        @(0..($Cpu.CcdCount - 1))
+    }
+    foreach ($ccd in $ccdOrder) {
+        $start = $ccd * $Cpu.CoresPerCcd
+        $cores = @($start..($start + $Cpu.CoresPerCcd - 1))
+        $scopes.Add([PSCustomObject]@{
+            id        = "CCD$ccd"
+            isVCache  = ($null -ne $vCacheIdx -and $vCacheIdx -eq $ccd)
+            cores     = $cores
+            status    = 'PENDING'
+            phase     = 'A'
+        })
+    }
+    if ($Policy.refinePerCore) {
+        for ($c = 0; $c -lt $Cpu.Cores; $c++) {
+            $ccd = if ($Cpu.IsDualCcd) { [int]([Math]::Floor($c / $Cpu.CoresPerCcd)) } else { 0 }
+            $scopes.Add([PSCustomObject]@{
+                id        = "core$c"
+                isVCache  = ($null -ne $vCacheIdx -and $vCacheIdx -eq $ccd)
+                cores     = @($c)
+                status    = 'PENDING'
+                phase     = 'B'
+            })
+        }
+    }
+    , @($scopes.ToArray())
+}
