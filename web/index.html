@@ -102,6 +102,22 @@
     <h2>Profiles</h2>
     <div id="profiles-list" class="muted">No profiles yet.</div>
   </section>
+
+  <section class="card" id="settings-card">
+    <h2>⚙ Shutdown behavior</h2>
+    <p class="muted small">Pick what should stop the service. The server's terminal window (Ctrl+C or closing the cmd window) <strong>always</strong> stops it — that's the master switch.</p>
+    <label class="setting-row">
+      <input type="checkbox" id="opt-tabclose" checked>
+      <span><strong>Closing the browser tab/window stops the service</strong><br>
+      <span class="muted small">Reverts CO to launch values and shuts down the server when the browser disconnects (heartbeat timeout 20s). Enabled by default — disable if you want to close the browser but keep the service running in the background.</span></span>
+    </label>
+    <label class="setting-row">
+      <input type="checkbox" id="opt-escshutdown">
+      <span><strong>Esc key stops the service (in addition to resetting CO)</strong><br>
+      <span class="muted small">When enabled, Esc still resets CO to 0 instantly, but also tears down the server. When disabled (default), Esc is just a panic reset and the service stays up.</span></span>
+    </label>
+    <p class="muted small">Settings are saved in your browser (localStorage) — they survive reloads.</p>
+  </section>
 </main>
 
 <aside id="help-panel" class="slide-out hidden">
@@ -111,7 +127,7 @@
 
 <footer class="footer">
   <div>⚠ Stuck or unstable? Press <kbd>Esc</kbd> to instantly reset all cores to 0.</div>
-  <div class="footer-secondary">ℹ Closing this tab reverts CO to launch values and stops the server.</div>
+  <div class="footer-secondary">ℹ Shutdown triggers (tab close, Esc) are configurable at the bottom of the page. Closing the terminal window or pressing Ctrl+C in it always stops the service.</div>
 </footer>
 
 <script src="/app.js"></script>

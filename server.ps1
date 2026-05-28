@@ -51,10 +51,12 @@ try {
 # Last report cache
 $script:LastReport = $null
 
-# Heartbeat tracking: when browser stops pinging, server reverts CO and exits
+# Heartbeat tracking: when browser stops pinging, server reverts CO and exits.
+# Disabled when user unchecks "tab close shuts down server" in UI settings.
 $script:LastHeartbeat = [DateTime]::Now
 $script:ShutdownRequested = $false
 $script:HeartbeatTimeoutSeconds = 20
+$script:HeartbeatEnabled = $true
 
 # Initialize WHEA Bodyguard (best effort; needs admin)
 Initialize-WheaWatcher -RepoRoot $RepoRoot
@@ -303,12 +305,23 @@ Register-Route -Method POST -Path '/api/test/stop' -Handler {
 
 Register-Route -Method POST -Path '/api/heartbeat' -Handler {
     $script:LastHeartbeat = [DateTime]::Now
-    @{ ok = $true; data = @{ timeout = $script:HeartbeatTimeoutSeconds } }
+    @{ ok = $true; data = @{ timeout = $script:HeartbeatTimeoutSeconds; enabled = $script:HeartbeatEnabled } }
 }
 
 Register-Route -Method POST -Path '/api/shutdown' -Handler {
     Invoke-GracefulShutdown
     @{ ok = $true; data = @{ shuttingDown = $true } }
+}
+
+Register-Route -Method POST -Path '/api/settings' -Handler {
+    param($ctx, $params)
+    $body = Read-JsonBody -Context $ctx
+    if ($body -and $null -ne $body.PSObject.Properties['heartbeatEnabled']) {
+        $script:HeartbeatEnabled = [bool]$body.heartbeatEnabled
+        $script:LastHeartbeat = [DateTime]::Now  # reset clock when toggling
+        Write-Log INFO "Heartbeat watchdog: $(if ($script:HeartbeatEnabled) {'ENABLED'} else {'DISABLED'})"
+    }
+    @{ ok = $true; data = @{ heartbeatEnabled = $script:HeartbeatEnabled } }
 }
 
 Register-Route -Method GET -Path '/api/status' -Handler {
@@ -416,6 +429,7 @@ $tickCallback = {
         Write-Log INFO "Shutdown was requested - exiting server loop"
         return $true
     }
+    if (-not $script:HeartbeatEnabled) { return $false }  # user opted out of auto-shutdown
     $silence = ([DateTime]::Now - $script:LastHeartbeat).TotalSeconds
     if ($silence -gt $script:HeartbeatTimeoutSeconds) {
         Write-Host ""

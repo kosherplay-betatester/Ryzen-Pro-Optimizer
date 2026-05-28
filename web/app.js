@@ -410,8 +410,14 @@ document.addEventListener('click', async e => {
   }
 });
 
-document.addEventListener('keydown', e => {
-  if (e.key === 'Escape') resetCo();
+document.addEventListener('keydown', async e => {
+  if (e.key === 'Escape') {
+    await resetCo();
+    if (settings.escShutsDown) {
+      try { fetch('/api/shutdown', { method: 'POST', keepalive: true }); } catch (_) {}
+      showToast('Esc — CO reset + server stopping', 'warn');
+    }
+  }
 });
 
 document.addEventListener('change', e => {
@@ -425,21 +431,53 @@ document.addEventListener('change', e => {
   }
 });
 
+// ----- Settings (localStorage-backed) -----
+const SETTINGS_KEY = 'rpo.settings.v1';
+const settings = (() => {
+  try { return JSON.parse(localStorage.getItem(SETTINGS_KEY)) || {}; } catch (_) { return {}; }
+})();
+if (typeof settings.tabCloseShutsDown !== 'boolean') settings.tabCloseShutsDown = true;
+if (typeof settings.escShutsDown !== 'boolean') settings.escShutsDown = false;
+
+function saveSettings() {
+  try { localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings)); } catch (_) {}
+  // Tell server about heartbeat preference so it doesn't shut down on timeout when disabled
+  fetch('/api/settings', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ heartbeatEnabled: settings.tabCloseShutsDown })
+  }).catch(() => {});
+}
+
+function applySettingsToUI() {
+  const tab = document.getElementById('opt-tabclose');
+  const esc = document.getElementById('opt-escshutdown');
+  if (tab) tab.checked = settings.tabCloseShutsDown;
+  if (esc) esc.checked = settings.escShutsDown;
+}
+
+document.addEventListener('change', e => {
+  if (e.target.id === 'opt-tabclose') { settings.tabCloseShutsDown = e.target.checked; saveSettings(); showToast(settings.tabCloseShutsDown ? 'Tab close will stop server' : 'Tab close will NOT stop server'); }
+  if (e.target.id === 'opt-escshutdown') { settings.escShutsDown = e.target.checked; saveSettings(); showToast(settings.escShutsDown ? 'Esc will reset CO + stop server' : 'Esc will only reset CO'); }
+});
+
 // Heartbeat — server uses absence of pings to detect closed browser and shut down
 async function sendHeartbeat() {
+  if (!settings.tabCloseShutsDown) return;  // user opted out — no heartbeat needed
   try { await fetch('/api/heartbeat', { method: 'POST' }); } catch (e) { /* server may be gone */ }
 }
 
-// Confirm-on-close prompt
+// Confirm-on-close prompt — only when tab close shuts down server
 window.addEventListener('beforeunload', (e) => {
-  // Modern browsers ignore custom messages but still show a generic warning when returnValue is set
+  if (!settings.tabCloseShutsDown) return;
   e.preventDefault();
-  e.returnValue = 'Closing this tab will revert your Curve Optimizer settings to launch values and stop the server. Continue?';
+  e.returnValue = 'Closing this tab will revert CO to launch values and stop the server. Continue?';
   return e.returnValue;
 });
 
-// On actual close, send a sendBeacon to trigger graceful shutdown immediately
+// On actual close, fire shutdown beacon — only if user opted in
 window.addEventListener('pagehide', () => {
+  if (!settings.tabCloseShutsDown) return;
   try {
     if (navigator.sendBeacon) {
       navigator.sendBeacon('/api/shutdown', '');
@@ -451,6 +489,8 @@ window.addEventListener('pagehide', () => {
 
 document.addEventListener('DOMContentLoaded', async () => {
   try {
+    applySettingsToUI();
+    saveSettings();  // push current preferences to server on load
     await loadCpu();
     await loadCoValues();
     await loadProfiles();
@@ -459,7 +499,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     sendHeartbeat();
     setInterval(pollTelemetry, POLL_INTERVAL_ACTIVE_MS);
     setInterval(pollStatus, POLL_INTERVAL_ACTIVE_MS);
-    setInterval(sendHeartbeat, 5000);  // every 5s
+    setInterval(sendHeartbeat, 5000);  // every 5s (no-op if user opted out)
   } catch (e) {
     document.body.insertAdjacentHTML('beforeend', `<div class="card warn">Failed to initialize: ${e.message}</div>`);
   }

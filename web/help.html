@@ -33,9 +33,14 @@
 <h3>Settings reset on reboot</h3>
 <p>Anything you apply here is temporary. After a reboot, your BIOS Curve Optimizer values return. Once you've found your sweet spot, write those values into BIOS for permanent application.</p>
 
-<h3>Closing the tab / browser reverts CO</h3>
-<p>When you close this browser tab (or the whole browser), the server detects it (heartbeat timeout, plus a sendBeacon on close) and does three things: stops any running stress test, reverts your Curve Optimizer settings to the values that were active when you opened the app (typically your BIOS values), and shuts itself down. The browser will also show a "Leave this site?" prompt so accidental closes don't lose your in-progress experiments.</p>
-<p>If you want to keep your applied values active while doing other things in Windows: keep the tab open in the background. If you genuinely want to commit your values across browser sessions, set them in BIOS.</p>
+<h3>Shutdown behavior is configurable</h3>
+<p>At the bottom of the page you'll find a <strong>Shutdown behavior</strong> card. Three triggers can stop the service:</p>
+<ul>
+<li><strong>Terminal window / Ctrl+C</strong> — always works. The cmd window that opened with the server is the master switch. Closing it or pressing Ctrl+C in it stops the service immediately (with graceful CO revert).</li>
+<li><strong>Closing the browser tab/window</strong> — <em>configurable</em>. When enabled (default), the server detects the browser dropping off (heartbeat timeout after 20 seconds, or instant via sendBeacon on close) and shuts down gracefully: stops any running test, reverts CO to launch values, closes the listener. Disable this setting if you want to close the browser but keep the service running in the background.</li>
+<li><strong>Esc key</strong> — <em>configurable</em>. Esc always resets CO to 0 (panic). When the "Esc also stops server" setting is enabled, Esc additionally triggers a server shutdown. Disabled by default so Esc is a pure panic-reset that leaves the service running.</li>
+</ul>
+<p>Your settings are saved in your browser (localStorage) and survive reloads.</p>
 
 <h2>Advanced</h2>
 
