@@ -146,3 +146,75 @@ function Tune-Scope {
     }
     $state
 }
+
+# In-memory orchestrator state. Reset by Stop-SmartTune.
+$script:Tune = @{
+    Status       = 'IDLE'        # IDLE | RUNNING | STOPPING | STOPPED | COMPLETED | FAILED
+    SessionId    = $null
+    StartedAt    = $null
+    Mode         = $null
+    Direction    = $null
+    Cpu          = $null
+    Policy       = $null
+    Scopes       = @()           # array of @{id,isVCache,cores,status,locked,scopeState,...}
+    CurrentIdx   = -1
+    SessionPath  = $null
+    HistoryPath  = $null
+}
+
+function Start-SmartTune {
+    param(
+        [Parameter(Mandatory)]$Cpu,
+        [Parameter(Mandatory)][string]$Mode,
+        [Parameter(Mandatory)][string]$Direction,
+        [Parameter(Mandatory)][string]$SessionPath,
+        [Parameter(Mandatory)][string]$HistoryPath
+    )
+    Clear-TunerNarrative
+    $policy = Get-ModePolicy -Mode $Mode -Direction $Direction
+    $plan = Plan-TuneSession -Cpu $Cpu -Policy $policy
+
+    $script:Tune.Status      = 'RUNNING'
+    $script:Tune.SessionId   = [Guid]::NewGuid().ToString('N').Substring(0,8)
+    $script:Tune.StartedAt   = (Get-Date).ToUniversalTime().ToString('o')
+    $script:Tune.Mode        = $Mode
+    $script:Tune.Direction   = $Direction
+    $script:Tune.Cpu         = $Cpu
+    $script:Tune.Policy      = $policy
+    $script:Tune.Scopes      = $plan
+    $script:Tune.CurrentIdx  = -1
+    $script:Tune.SessionPath = $SessionPath
+    $script:Tune.HistoryPath = $HistoryPath
+
+    Write-TunerNarrative -Icon 'gear' -Message "Smart Tune started · $Mode · $Direction"
+    Write-TunerNarrative -Icon 'target' -Message "Plan: $($plan.Count) scopes to tune"
+    Save-TuneSession -Path $SessionPath -Session (Get-SmartTuneState -SinceSeqId 0)
+}
+
+function Stop-SmartTune {
+    if ($script:Tune.Status -eq 'RUNNING') {
+        Write-TunerNarrative -Icon 'gear' -Message 'Smart Tune stopped by user'
+    }
+    $script:Tune.Status = 'STOPPED'
+}
+
+function Discard-SmartTune {
+    Stop-SmartTune
+    if ($script:Tune.SessionPath) { Clear-TuneSession -Path $script:Tune.SessionPath }
+    $script:Tune.Status = 'IDLE'
+}
+
+function Get-SmartTuneState {
+    param([int]$SinceSeqId = 0)
+    [PSCustomObject]@{
+        status      = $script:Tune.Status
+        sessionId   = $script:Tune.SessionId
+        startedAt   = $script:Tune.StartedAt
+        mode        = $script:Tune.Mode
+        direction   = $script:Tune.Direction
+        scopes      = @($script:Tune.Scopes)
+        currentIdx  = $script:Tune.CurrentIdx
+        narrative   = (Get-NewNarrativeEntries -SinceSeqId $SinceSeqId)
+        latestSeqId = (Get-CurrentNarrativeSeqId)
+    }
+}

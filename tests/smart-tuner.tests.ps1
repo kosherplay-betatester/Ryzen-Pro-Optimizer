@@ -159,3 +159,44 @@ Describe 'Get-TelemetryHeadroom' {
         Get-TelemetryHeadroom -Snapshot $null -MaxTempC 95 -MaxVid 1.45 | Should -Be 0.0
     }
 }
+
+Describe 'Tune session state machine' {
+    BeforeEach {
+        . "$PSScriptRoot\..\lib\smart-tuner-narrative.ps1"
+        Clear-TunerNarrative
+        $script:tmp = Join-Path ([IO.Path]::GetTempPath()) ("rpo-sess-" + [Guid]::NewGuid().ToString('N') + ".json")
+    }
+    AfterEach {
+        if (Test-Path $script:tmp) { Remove-Item $script:tmp -Force }
+        Stop-SmartTune
+    }
+    It 'Start-SmartTune builds plan, marks state as RUNNING, emits narrative' {
+        $cpu = [PSCustomObject]@{
+            Name='Test'; Cores=16; CcdCount=2; CoresPerCcd=8
+            IsDualCcd=$true; VCacheCcdIndex=0
+        }
+        Start-SmartTune -Cpu $cpu -Mode 'daily-driver' -Direction 'undervolt' `
+            -SessionPath $script:tmp -HistoryPath ([IO.Path]::GetTempFileName())
+        $state = Get-SmartTuneState -SinceSeqId 0
+        $state.status      | Should -Be 'RUNNING'
+        $state.mode        | Should -Be 'daily-driver'
+        $state.scopes.Count | Should -Be 2
+        $state.narrative.Count | Should -BeGreaterThan 0
+    }
+    It 'Stop-SmartTune transitions to STOPPED' {
+        $cpu = [PSCustomObject]@{
+            Name='Test'; Cores=8; CcdCount=1; CoresPerCcd=8
+            IsDualCcd=$false; VCacheCcdIndex=$null
+        }
+        Start-SmartTune -Cpu $cpu -Mode 'daily-driver' -Direction 'undervolt' `
+            -SessionPath $script:tmp -HistoryPath ([IO.Path]::GetTempFileName())
+        Stop-SmartTune
+        $state = Get-SmartTuneState -SinceSeqId 0
+        $state.status | Should -Be 'STOPPED'
+    }
+    It 'Get-SmartTuneState returns IDLE or STOPPED when no session' {
+        Stop-SmartTune
+        $state = Get-SmartTuneState -SinceSeqId 0
+        $state.status | Should -BeIn 'IDLE','STOPPED'
+    }
+}
