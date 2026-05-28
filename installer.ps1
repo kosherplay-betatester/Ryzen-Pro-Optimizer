@@ -174,6 +174,67 @@ function Test-LhmInstalled {
     Test-Path (Join-Path $VendorDir 'LibreHardwareMonitorLib.dll')
 }
 
+function Test-PawnIoInstalled {
+    # PawnIO registers a Windows service named "PawnIO"
+    $svc = Get-Service -Name 'PawnIO' -ErrorAction SilentlyContinue
+    if ($svc) { return $true }
+    # Also check the default install path
+    $defaultPath = "$env:ProgramFiles\PawnIO"
+    if (Test-Path $defaultPath) { return $true }
+    $false
+}
+
+function Install-PawnIo {
+    if (Test-PawnIoInstalled) {
+        Write-Host "PawnIO is already installed."
+        return
+    }
+    if (-not (Test-Path $CacheDir)) { New-Item -ItemType Directory -Path $CacheDir | Out-Null }
+
+    Write-Host "Locating latest PawnIO release..."
+    $pawnApi = 'https://api.github.com/repos/namazso/PawnIO/releases/latest'
+    try {
+        $pawnRelease = Invoke-RestMethod -Uri $pawnApi -Headers @{ 'User-Agent' = 'Ryzen-Pro-Optimizer-Installer' }
+    } catch {
+        throw "Failed to query PawnIO releases: $($_.Exception.Message)"
+    }
+
+    # Prefer MSI; fall back to .exe installer
+    $asset = $pawnRelease.assets | Where-Object { $_.name -match '\.msi$' } | Select-Object -First 1
+    $isMsi = $true
+    if (-not $asset) {
+        $asset = $pawnRelease.assets | Where-Object { $_.name -match 'setup.*\.exe$|installer.*\.exe$|PawnIO.*\.exe$' } | Select-Object -First 1
+        $isMsi = $false
+    }
+    if (-not $asset) {
+        throw "No MSI or installer .exe asset in PawnIO release $($pawnRelease.tag_name)"
+    }
+
+    $ext = if ($isMsi) { 'msi' } else { 'exe' }
+    $installerPath = Join-Path $CacheDir "pawnio-$($pawnRelease.tag_name).$ext"
+    if (-not (Test-Path $installerPath)) {
+        Write-Host "Downloading PawnIO $($pawnRelease.tag_name) ($($asset.name))..."
+        Invoke-FastDownload -Uri $asset.browser_download_url -OutFile $installerPath
+    }
+
+    Write-Host "Installing PawnIO driver (this registers a Windows service)..." -ForegroundColor Cyan
+    if ($isMsi) {
+        $proc = Start-Process -FilePath 'msiexec.exe' -ArgumentList @('/i', "`"$installerPath`"", '/quiet', '/norestart') -Wait -PassThru
+    } else {
+        # Try common silent flags; if installer is opinionated, fall through to interactive
+        $proc = Start-Process -FilePath $installerPath -ArgumentList @('/S', '/silent', '/quiet') -Wait -PassThru
+    }
+    if ($proc.ExitCode -ne 0) {
+        throw "PawnIO installer exited with code $($proc.ExitCode). Try running '$installerPath' manually."
+    }
+
+    Start-Sleep -Seconds 2  # give the service time to register
+    if (-not (Test-PawnIoInstalled)) {
+        throw "PawnIO installer ran but the PawnIO service is not detected. Try installing manually from $($asset.browser_download_url)"
+    }
+    Write-Host "PawnIO installed successfully." -ForegroundColor Green
+}
+
 # Entry point - only run when invoked directly, not dot-sourced
 if ($MyInvocation.InvocationName -ne '.') {
     try {
@@ -181,6 +242,18 @@ if ($MyInvocation.InvocationName -ne '.') {
             Install-CoreCycler
         } else {
             Write-Host "CoreCycler is already installed at $CoreCyclerDir"
+        }
+
+        # PawnIO is required by modern ryzen-smu-cli (ZenStates-Core) and modern
+        # LibreHardwareMonitor. WinRing0 was removed because Microsoft flagged it
+        # as a vulnerable driver. PawnIO is the replacement.
+        try {
+            Install-PawnIo
+        } catch {
+            Write-Host ""
+            Write-Host "WARNING: PawnIO install failed: $($_.Exception.Message)" -ForegroundColor Yellow
+            Write-Host "CO writes and sensor readings will not work without it." -ForegroundColor Yellow
+            Write-Host "Install manually from https://github.com/namazso/PawnIO/releases" -ForegroundColor Yellow
         }
 
         if (-not (Test-LhmInstalled)) {
@@ -199,7 +272,9 @@ if ($MyInvocation.InvocationName -ne '.') {
         Write-Host "If automatic install fails, you can:"
         Write-Host " 1. Manually download CoreCycler from https://github.com/sp00n/corecycler/releases"
         Write-Host "    and extract its contents into:  $CoreCyclerDir"
-        Write-Host " 2. Manually download LibreHardwareMonitor from"
+        Write-Host " 2. Manually install PawnIO driver from"
+        Write-Host "    https://github.com/namazso/PawnIO/releases  (run the MSI/exe as admin)"
+        Write-Host " 3. Manually download LibreHardwareMonitor from"
         Write-Host "    https://github.com/LibreHardwareMonitor/LibreHardwareMonitor/releases"
         Write-Host "    and copy LibreHardwareMonitorLib.dll into:  $VendorDir"
         exit 1

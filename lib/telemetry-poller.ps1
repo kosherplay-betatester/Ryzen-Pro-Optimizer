@@ -19,14 +19,13 @@ function Initialize-Telemetry {
         Write-Log WARN "LibreHardwareMonitorLib.dll not found at $dll - telemetry disabled"
         return $false
     }
+    # Load any companion DLLs first so LibreHardwareMonitorLib can resolve them
+    $vendorDir = Join-Path $RepoRoot 'vendor'
+    Get-ChildItem -Path $vendorDir -Filter '*.dll' -ErrorAction SilentlyContinue | Where-Object { $_.Name -ne 'LibreHardwareMonitorLib.dll' } | ForEach-Object {
+        try { Add-Type -Path $_.FullName -ErrorAction SilentlyContinue } catch {}
+    }
     try {
         Add-Type -Path $dll -ErrorAction Stop
-        foreach ($companion in @('HidSharp.dll','LibreHardwareMonitor.PawnIo.dll')) {
-            $p = Join-Path $RepoRoot "vendor\$companion"
-            if (Test-Path $p) {
-                try { Add-Type -Path $p -ErrorAction SilentlyContinue } catch {}
-            }
-        }
         $script:Computer = New-Object LibreHardwareMonitor.Hardware.Computer
         $script:Computer.IsCpuEnabled = $true
         $script:Computer.IsMemoryEnabled = $true
@@ -35,8 +34,25 @@ function Initialize-Telemetry {
         $script:TelemetryAvailable = $true
         Write-Log INFO "Telemetry initialized; hardware count: $($script:Computer.Hardware.Count)"
         return $true
+    } catch [System.Reflection.ReflectionTypeLoadException] {
+        # Surface the LoaderExceptions so we can diagnose what's actually missing
+        Write-Log ERROR "Failed to init telemetry (type load error): $($_.Exception.Message)"
+        foreach ($le in $_.Exception.LoaderExceptions) {
+            Write-Log ERROR "  Loader: $($le.Message)"
+        }
+        $script:Computer = $null
+        $script:TelemetryAvailable = $false
+        return $false
     } catch {
-        Write-Log ERROR "Failed to init telemetry: $($_.Exception.Message)"
+        $msg = $_.Exception.Message
+        if ($_.Exception.InnerException) {
+            $msg += " :: " + $_.Exception.InnerException.Message
+        }
+        Write-Log ERROR "Failed to init telemetry: $msg"
+        # If it looks like a PawnIO issue, mention it
+        if ($msg -match 'PawnIO|driver|service|access denied') {
+            Write-Log ERROR "This often means the PawnIO driver isn't installed. Re-run Install.bat as admin."
+        }
         $script:Computer = $null
         $script:TelemetryAvailable = $false
         return $false

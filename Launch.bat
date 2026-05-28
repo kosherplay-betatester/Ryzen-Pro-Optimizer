@@ -16,15 +16,22 @@ if %errorlevel% neq 0 (
     exit /b
 )
 
-REM Run installer if corecycler/ is missing
-if not exist "%~dp0corecycler\script-corecycler.ps1" (
-    echo CoreCycler not found. Running installer...
+REM Run installer if corecycler is missing OR if PawnIO service isn't registered
+set RUN_INSTALLER=0
+if not exist "%~dp0corecycler\script-corecycler.ps1" set RUN_INSTALLER=1
+if not exist "%~dp0vendor\LibreHardwareMonitorLib.dll" set RUN_INSTALLER=1
+sc.exe query PawnIO >nul 2>&1
+if %errorlevel% neq 0 set RUN_INSTALLER=1
+
+if "%RUN_INSTALLER%"=="1" (
+    echo Required components missing or out of date. Running installer...
     powershell -ExecutionPolicy Bypass -File "%~dp0installer.ps1"
     if %errorlevel% neq 0 (
         echo.
-        echo Installer failed. Press any key to exit.
-        pause >nul
-        exit /b 1
+        echo Installer reported an error. Continuing anyway in case it was non-fatal.
+        echo If the app fails to read sensors or CO values, run Install.bat manually.
+        echo.
+        timeout /t 5 >nul
     )
 )
 
