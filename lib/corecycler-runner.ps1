@@ -239,3 +239,27 @@ function Get-LiveStatus {
         $null
     }
 }
+
+# Classify a probe's outcome from CoreCycler + Prime95 log tails.
+# WHEA wins (worst class), then P95 errors, then TIMEOUT if process
+# didn't exit cleanly, else PASS. The caller layers ABORT_SAFETY on
+# top by checking the Safety Guard separately.
+function Test-CoreCyclerProbeResult {
+    param(
+        [Parameter(Mandatory)][AllowEmptyCollection()][string[]]$LogLines,
+        [Parameter(Mandatory)][AllowEmptyCollection()][string[]]$PrimeLines,
+        [Parameter(Mandatory)][bool]$ExitedCleanly
+    )
+    foreach ($l in $LogLines) {
+        if ($l -match 'cores with a WHEA error so far:\s*([1-9])') { return 'FAIL_WHEA' }
+    }
+    foreach ($l in $LogLines) {
+        if ($l -match 'cores with an error so far:\s*([1-9])') { return 'FAIL_P95' }
+        if ($l -match 'has thrown an error|core_error|core .* errored') { return 'FAIL_P95' }
+    }
+    foreach ($l in $PrimeLines) {
+        if ($l -match 'FATAL ERROR|Rounding was|Hardware failure') { return 'FAIL_P95' }
+    }
+    if (-not $ExitedCleanly) { return 'TIMEOUT' }
+    'PASS'
+}
