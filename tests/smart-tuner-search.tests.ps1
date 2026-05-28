@@ -151,3 +151,42 @@ Describe 'Get-LockInValue' {
         Get-LockInValue -ScopeState $s -Policy $policy | Should -Be 0
     }
 }
+
+Describe 'Update-ScopeFromResult direction awareness' {
+    It 'records the shallowest fail as knownUnstable for undervolt' {
+        $p = Get-ModePolicy -Mode 'daily-driver' -Direction 'undervolt'
+        $s = New-ScopeState -ScopeId 'CCD0' -IsVCache $false -SeedValue 0 -Policy $p
+        $s = Update-ScopeFromResult -ScopeState $s -Candidate -25 -Result 'FAIL_P95'
+        $s = Update-ScopeFromResult -ScopeState $s -Candidate -22 -Result 'FAIL_P95'
+        # Undervolt shallowest = closest to zero = -22 (max of -25, -22)
+        $s.knownUnstable | Should -Be -22
+    }
+    It 'records the shallowest fail as knownUnstable for overclock' {
+        $p = Get-ModePolicy -Mode 'overclock' -Direction 'overclock'
+        $s = New-ScopeState -ScopeId 'CCD0' -IsVCache $false -SeedValue 0 -Policy $p
+        $s = Update-ScopeFromResult -ScopeState $s -Candidate 12 -Result 'FAIL_P95'
+        $s = Update-ScopeFromResult -ScopeState $s -Candidate 8  -Result 'FAIL_P95'
+        # Overclock shallowest = closest to zero = +8 (min of 12, 8)
+        $s.knownUnstable | Should -Be 8
+    }
+    It 'records the deepest pass as knownStable for overclock' {
+        $p = Get-ModePolicy -Mode 'overclock' -Direction 'overclock'
+        $s = New-ScopeState -ScopeId 'CCD0' -IsVCache $false -SeedValue 0 -Policy $p
+        $s = Update-ScopeFromResult -ScopeState $s -Candidate 3 -Result 'PASS'
+        $s = Update-ScopeFromResult -ScopeState $s -Candidate 6 -Result 'PASS'
+        # Overclock deepest = most positive = +6
+        $s.knownStable | Should -Be 6
+    }
+    It 'ABORT_SAFETY shifts toward zero (overclock direction)' {
+        $p = Get-ModePolicy -Mode 'overclock' -Direction 'overclock'
+        $s = New-ScopeState -ScopeId 'CCD0' -IsVCache $false -SeedValue 0 -Policy $p
+        $s = Update-ScopeFromResult -ScopeState $s -Candidate 10 -Result 'ABORT_SAFETY'
+        # OC + ABORT_SAFETY shifts -1 toward zero = 9
+        $s.knownUnstable | Should -Be 9
+    }
+    It 'stores direction on scope state from policy' {
+        $p = Get-ModePolicy -Mode 'overclock' -Direction 'overclock'
+        $s = New-ScopeState -ScopeId 'CCD0' -IsVCache $false -SeedValue 0 -Policy $p
+        $s.direction | Should -Be 'overclock'
+    }
+}

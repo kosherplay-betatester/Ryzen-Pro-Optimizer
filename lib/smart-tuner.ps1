@@ -204,6 +204,81 @@ function Discard-SmartTune {
     $script:Tune.Status = 'IDLE'
 }
 
+# Resume a session that was interrupted by a crash or restart. Loads the
+# session JSON, rebuilds $script:Tune in memory, marks the previously-
+# in-progress scope as ABORT_CRASH in history (so we never re-probe that
+# exact value), and resumes the loop from the next pending scope.
+#
+# Returns $true on success, $false if no session file exists or it is
+# unreadable/incompatible.
+function Resume-SmartTune {
+    param(
+        [Parameter(Mandatory)][string]$SessionPath,
+        [Parameter(Mandatory)][string]$HistoryPath,
+        [Parameter(Mandatory)]$Cpu
+    )
+    $sess = Load-TuneSession -Path $SessionPath
+    if (-not $sess) { return $false }
+    # Re-derive policy from mode + direction in the saved session
+    $mode      = if ($sess.PSObject.Properties['mode'])      { [string]$sess.mode }      else { 'daily-driver' }
+    $direction = if ($sess.PSObject.Properties['direction']) { [string]$sess.direction } else { 'undervolt' }
+    $policy = Get-ModePolicy -Mode $mode -Direction $direction
+
+    Clear-TunerNarrative
+
+    # Reconstruct the scope objects so they're regular PSCustomObjects
+    # (after JSON round-trip they already are, but we normalise shape).
+    $scopes = New-Object System.Collections.Generic.List[object]
+    $crashIdx = -1
+    foreach ($s in @($sess.scopes)) {
+        $st = $s.status
+        # If the previous session had a scope mid-probe (PROBING), record
+        # the last attempted value as a hard crash data point - we know
+        # the system stopped while testing it.
+        if ($st -eq 'PROBING' -and $s.scopeState -and $null -ne $s.scopeState.lastCandidate) {
+            try {
+                Add-HistoryEntry -Path $HistoryPath -Entry @{
+                    cpuModel  = $Cpu.Name
+                    scope     = $s.id
+                    value     = [int]$s.scopeState.lastCandidate
+                    result    = 'ABORT_CRASH'
+                    mode      = $mode
+                    sessionId = $sess.sessionId
+                }
+            } catch {}
+            $crashIdx = $scopes.Count
+            $st = 'PENDING'   # re-do this scope on resume
+        }
+        $scopes.Add([PSCustomObject]@{
+            id       = $s.id
+            isVCache = [bool]$s.isVCache
+            cores    = @($s.cores)
+            status   = if ($st -eq 'LOCKED' -or $st -eq 'FAILED') { $st } else { 'PENDING' }
+            phase    = $s.phase
+            locked   = if ($s.PSObject.Properties['locked']) { $s.locked } else { $null }
+        })
+    }
+
+    $script:Tune.Status      = 'RUNNING'
+    $script:Tune.SessionId   = $sess.sessionId
+    $script:Tune.StartedAt   = $sess.startedAt
+    $script:Tune.Mode        = $mode
+    $script:Tune.Direction   = $direction
+    $script:Tune.Cpu         = $Cpu
+    $script:Tune.Policy      = $policy
+    $script:Tune.Scopes      = @($scopes.ToArray())
+    $script:Tune.CurrentIdx  = -1
+    $script:Tune.SessionPath = $SessionPath
+    $script:Tune.HistoryPath = $HistoryPath
+
+    Write-TunerNarrative -Icon 'gear' -Message "Resumed Smart Tune session $($sess.sessionId)"
+    if ($crashIdx -ge 0) {
+        Write-TunerNarrative -Icon 'warn' -Message "Recorded crash on scope $($scopes[$crashIdx].id) - re-probing"
+    }
+    Save-TuneSession -Path $SessionPath -Session (Get-SmartTuneState -SinceSeqId 0)
+    return $true
+}
+
 function Get-SmartTuneState {
     param([int]$SinceSeqId = 0)
     [PSCustomObject]@{
@@ -250,10 +325,29 @@ function Step-SmartTune {
         }
         $script:Tune.CurrentIdx = $next
         $sc = $script:Tune.Scopes[$next]
-        $sc | Add-Member -NotePropertyName scopeState -NotePropertyValue (
+        # Consult history for prior-session results on THIS exact scope and CPU.
+        # known crash floor narrows the lower bound; known stable ceiling seeds
+        # us at a value we've already proven safe - both make convergence
+        # dramatically faster across sessions.
+        $hist = $null; $crash = $null
+        if ($script:Tune.HistoryPath -and (Test-Path $script:Tune.HistoryPath) -and
+            (Get-Command Get-KnownStableCeiling -ErrorAction SilentlyContinue)) {
+            try {
+                $hist  = Get-KnownStableCeiling -Path $script:Tune.HistoryPath -CpuModel $script:Tune.Cpu.Name -Scope $sc.id
+                $crash = Get-KnownCrashFloor    -Path $script:Tune.HistoryPath -CpuModel $script:Tune.Cpu.Name -Scope $sc.id
+            } catch {}
+        }
+        $newScope = if ($null -ne $hist -or $null -ne $crash) {
+            New-ScopeState -ScopeId $sc.id -IsVCache $sc.isVCache -SeedValue 0 -Policy $script:Tune.Policy `
+                -KnownStableHint $hist -KnownCrashFloor $crash
+        } else {
             New-ScopeState -ScopeId $sc.id -IsVCache $sc.isVCache -SeedValue 0 -Policy $script:Tune.Policy
-        ) -Force
+        }
+        $sc | Add-Member -NotePropertyName scopeState -NotePropertyValue $newScope -Force
         $sc.status = 'PROBING'
+        if ($null -ne $hist -or $null -ne $crash) {
+            Write-TunerNarrative -Icon 'history' -Message "History for $($sc.id): stable<=$hist, crash>=$crash" -Payload @{ scope=$sc.id; hint=$hist; crash=$crash }
+        }
         Write-TunerNarrative -Icon 'arrow' -Message "Starting scope $($sc.id)" -Payload @{ scope = $sc.id }
     }
 

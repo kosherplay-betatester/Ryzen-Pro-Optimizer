@@ -32,6 +32,7 @@ function New-ScopeState {
     [PSCustomObject]@{
         scopeId          = $ScopeId
         isVCache         = $IsVCache
+        direction        = [string]$Policy.direction   # 'undervolt' or 'overclock' - drives bisection sign
         bounds           = [PSCustomObject]@{ floor = [int]$floor; ceiling = [int]$ceiling }
         seedValue        = $SeedValue
         knownStable      = if ($null -ne $KnownStableHint) { [int]$KnownStableHint } else { $null }
@@ -96,9 +97,16 @@ function Update-ScopeFromResult {
         [Parameter(Mandatory)][int]$Candidate,
         [Parameter(Mandatory)][ValidateSet('PASS','FAIL_P95','FAIL_WHEA','ABORT_SAFETY','TIMEOUT','ABORT_CRASH')][string]$Result
     )
+    # Direction encodes sign of "deeper" and "shallower":
+    #   undervolt: deeper = more negative (smaller int); shallower = closer to zero
+    #   overclock: deeper = more positive (larger int);  shallower = closer to zero
+    $dir = if ($ScopeState.PSObject.Properties['direction']) { [string]$ScopeState.direction } else { 'undervolt' }
+    $isUndervolt = $dir -ne 'overclock'
+
     $new = [PSCustomObject]@{
         scopeId         = $ScopeState.scopeId
         isVCache        = $ScopeState.isVCache
+        direction       = $dir
         bounds          = $ScopeState.bounds
         seedValue       = $ScopeState.seedValue
         knownStable     = $ScopeState.knownStable
@@ -110,29 +118,25 @@ function Update-ScopeFromResult {
     }
     switch ($Result) {
         'PASS' {
-            if ($null -eq $new.knownStable -or
-                ($ScopeState.isVCache -eq $false -and $Candidate -lt $new.knownStable) -or
-                ($ScopeState.isVCache -eq $true  -and $Candidate -lt $new.knownStable)) {
-                # For undervolt, "deeper" = more negative. Always treat
-                # the deepest PASS we've seen as knownStable.
+            # "Deepest PASS" - undervolt: smallest int. overclock: largest int.
+            $isDeeper = if ($isUndervolt) { $Candidate -lt $new.knownStable } else { $Candidate -gt $new.knownStable }
+            if ($null -eq $new.knownStable -or $isDeeper) {
                 $new.knownStable = $Candidate
             }
-            # Note: for overclock, "deeper" = more positive - same logic
-            # applies because we only call Update with candidates from
-            # Get-NextCandidate, which respects direction.
         }
         { $_ -in 'FAIL_P95','FAIL_WHEA','TIMEOUT','ABORT_CRASH' } {
-            if ($null -eq $new.knownUnstable -or $Candidate -gt $new.knownUnstable) {
-                # For undervolt, "shallower" = closer to zero. The
-                # shallowest fail we've ever recorded is knownUnstable.
+            # "Shallowest FAIL" - undervolt: largest int (closest to zero from below).
+            # overclock: smallest int (closest to zero from above).
+            $isShallower = if ($isUndervolt) { $Candidate -gt $new.knownUnstable } else { $Candidate -lt $new.knownUnstable }
+            if ($null -eq $new.knownUnstable -or $isShallower) {
                 $new.knownUnstable = $Candidate
             }
         }
         'ABORT_SAFETY' {
-            # We never reached a stability conclusion - mark one step
-            # safer than the attempted candidate as unstable.
-            $shifted = $Candidate + 1  # for undervolt; flip for OC if needed
-            if ($null -eq $new.knownUnstable -or $shifted -gt $new.knownUnstable) {
+            # No stability signal - mark one step toward zero (safer) as unstable.
+            $shifted = if ($isUndervolt) { $Candidate + 1 } else { $Candidate - 1 }
+            $isShallower = if ($isUndervolt) { $shifted -gt $new.knownUnstable } else { $shifted -lt $new.knownUnstable }
+            if ($null -eq $new.knownUnstable -or $isShallower) {
                 $new.knownUnstable = $shifted
             }
         }

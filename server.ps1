@@ -515,13 +515,28 @@ Register-Route -Method POST -Path '/api/smart-tune/start' -Handler {
             mode = $mode
             direction = $direction
         }
-        # Arm safety guard for the entire session
+        # Arm safety guard for the entire session. On abort: stop the tune,
+        # write a panic breadcrumb for the launch snapshot, then revert CO
+        # to the launch values so the system returns to a known-safe state.
+        # "Stability is king" - never leave the user at an unstable CO after
+        # a safety trip.
         $wheaCount = @(Get-WheaEvents).Count
+        $cpuForCallback = $cpu
+        $coReadyForCallback = $coReady
+        $launchForCallback = $launchSnapshot
         Enable-SafetyGuard -WheaBaseline $wheaCount -OnAbort {
             param($violations)
-            Write-Log ERROR "SmartTune safety abort"
-            Stop-SmartTune
-            Set-CurrentState -NewState 'REPORTING' -Force
+            $reason = if (@($violations).Count -gt 0) { "SmartTune safety abort: $($violations[0].metric)" } else { 'SmartTune safety abort' }
+            Write-Log ERROR $reason
+            try { Stop-SmartTune } catch {}
+            if ($coReadyForCallback -and $null -ne $launchForCallback) {
+                try {
+                    Save-PanicRevertState -Values $launchForCallback -Reason $reason
+                    Set-AllCoreCo -Values $launchForCallback
+                    Write-Log INFO "SmartTune abort: CO reverted to launch snapshot"
+                } catch { Write-Log ERROR "Revert during SmartTune abort failed: $($_.Exception.Message)" }
+            }
+            try { Set-CurrentState -NewState 'REPORTING' -Force } catch {}
         }.GetNewClosure()
         @{ ok = $true; data = (Get-SmartTuneState -SinceSeqId 0) }
     } catch {
@@ -545,9 +560,39 @@ Register-Route -Method GET -Path '/api/smart-tune/state' -Handler {
 }
 
 Register-Route -Method POST -Path '/api/smart-tune/resume' -Handler {
-    $sess = Load-TuneSession -Path $script:SmartTuneSessionPath
-    if (-not $sess) { return @{ ok = $false; error = 'No session to resume' } }
-    @{ ok = $true; data = @{ resumed = $true; sessionId = $sess.sessionId } }
+    if (-not $runnerReady) { return @{ ok = $false; error = 'CoreCycler not installed' } }
+    if (-not $coReady)     { return @{ ok = $false; error = 'CO tool not initialized' } }
+    $cur = (Get-CurrentState).state
+    if ($cur -ne 'IDLE' -and $cur -ne 'REPORTING') {
+        return @{ ok = $false; error = "Cannot resume - state=$cur" }
+    }
+    $ok = Resume-SmartTune -SessionPath $script:SmartTuneSessionPath -HistoryPath $script:SmartTuneHistoryPath -Cpu $cpu
+    if (-not $ok) { return @{ ok = $false; error = 'No session to resume (or unreadable)' } }
+    Set-CurrentState -NewState 'TESTING' -Data @{
+        startedAt = (Get-Date -Format 'o')
+        smartTune = $true
+        resumed   = $true
+    }
+    $wheaCount = @(Get-WheaEvents).Count
+    $cpuForCallback = $cpu
+    $coReadyForCallback = $coReady
+    $launchForCallback = $launchSnapshot
+    Enable-SafetyGuard -WheaBaseline $wheaCount -OnAbort {
+        param($violations)
+        $reason = if (@($violations).Count -gt 0) { "SmartTune safety abort: $($violations[0].metric)" } else { 'SmartTune safety abort' }
+        Write-Log ERROR $reason
+        try { Stop-SmartTune } catch {}
+        if ($coReadyForCallback -and $null -ne $launchForCallback) {
+            try {
+                Save-PanicRevertState -Values $launchForCallback -Reason $reason
+                Set-AllCoreCo -Values $launchForCallback
+            } catch {}
+        }
+        try { Set-CurrentState -NewState 'REPORTING' -Force } catch {}
+    }.GetNewClosure()
+    # Clear the pending-session prompt now that we've actively resumed
+    $script:PendingSmartSession = $null
+    @{ ok = $true; data = (Get-SmartTuneState -SinceSeqId 0) }
 }
 
 Register-Route -Method POST -Path '/api/smart-tune/discard' -Handler {
@@ -610,8 +655,10 @@ Register-Route -Method GET -Path '/api/status' -Handler {
     # only fires after the user's browser re-polls.
     $tuneState = Get-SmartTuneState -SinceSeqId 0
     if ($tuneState.status -eq 'RUNNING') {
+        # The CO has already been written by $applyFn; the probe just runs
+        # stress and returns the classification. Step-OneProbe invokes
+        # $ProbeFn with no argument by design.
         $probeFn = {
-            param($cand)
             $rt = $script:Tune.Policy.probeRuntimeMin
             $timeout = [int]($rt * 60 * 2)   # 2x runtime as hard timeout
             Invoke-Probe -RepoRoot $RepoRoot -ScopeCores $script:Tune.Scopes[$script:Tune.CurrentIdx].cores `
