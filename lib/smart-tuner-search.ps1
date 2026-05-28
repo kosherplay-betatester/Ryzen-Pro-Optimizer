@@ -154,3 +154,22 @@ function Test-ScopeConverged {
     if ($null -ne $unstable -and ($unstable -eq $floor -or $unstable -eq $ceiling) -and $null -eq $stable) { return $true }
     $false
 }
+
+# Returns the final value to write for this scope, after applying the
+# mode's safety margin. For undervolt, margin shifts toward zero
+# (less aggressive). For overclock, margin shifts toward zero (less
+# overshoot). marginPoints in policy is signed:
+#   undervolt: positive value (e.g., +2) - lock = stable + 2 (less negative)
+#   overclock: negative value (e.g., -1) - lock = stable + (-1) (less positive)
+# Clamped to bounds either way.
+function Get-LockInValue {
+    param(
+        [Parameter(Mandatory)]$ScopeState,
+        [Parameter(Mandatory)]$Policy
+    )
+    if ($null -eq $ScopeState.knownStable) { return $null }
+    $locked = $ScopeState.knownStable + [int]$Policy.marginPoints
+    if ($locked -lt $ScopeState.bounds.floor)   { $locked = $ScopeState.bounds.floor }
+    if ($locked -gt $ScopeState.bounds.ceiling) { $locked = $ScopeState.bounds.ceiling }
+    [int]$locked
+}

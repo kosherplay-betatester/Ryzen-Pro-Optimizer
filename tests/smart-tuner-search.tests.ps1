@@ -124,3 +124,30 @@ Describe 'Test-ScopeConverged' {
         Test-ScopeConverged -ScopeState $s | Should -BeTrue
     }
 }
+
+Describe 'Get-LockInValue' {
+    It 'applies +margin (toward zero) for undervolt' {
+        $policy = Get-ModePolicy -Mode 'daily-driver' -Direction 'undervolt'
+        $s = New-ScopeState -ScopeId 'CCD0' -IsVCache $false -SeedValue 0 -Policy $policy
+        $s.knownStable = -20
+        Get-LockInValue -ScopeState $s -Policy $policy | Should -Be -18   # -20 + 2
+    }
+    It 'applies -margin (toward zero) for overclock' {
+        $policy = Get-ModePolicy -Mode 'overclock' -Direction 'overclock'
+        $s = New-ScopeState -ScopeId 'CCD0' -IsVCache $false -SeedValue 0 -Policy $policy
+        $s.knownStable = 10
+        # Policy.marginPoints = -1, so locked = 10 + (-1) for OC means safer = 9
+        Get-LockInValue -ScopeState $s -Policy $policy | Should -Be 9
+    }
+    It 'returns null when no stable value found' {
+        $policy = Get-ModePolicy -Mode 'daily-driver' -Direction 'undervolt'
+        $s = New-ScopeState -ScopeId 'CCD0' -IsVCache $false -SeedValue 0 -Policy $policy
+        Get-LockInValue -ScopeState $s -Policy $policy | Should -Be $null
+    }
+    It 'never goes past the ceiling/floor when margin would push it' {
+        $policy = Get-ModePolicy -Mode 'daily-driver' -Direction 'undervolt'
+        $s = New-ScopeState -ScopeId 'CCD0' -IsVCache $false -SeedValue 0 -Policy $policy
+        $s.knownStable = -1   # very shallow; +2 margin would put us at +1 past ceiling 0
+        Get-LockInValue -ScopeState $s -Policy $policy | Should -Be 0
+    }
+}
