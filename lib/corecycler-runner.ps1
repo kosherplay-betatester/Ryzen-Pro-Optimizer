@@ -310,13 +310,18 @@ function Invoke-Probe {
     }
     if ($aborted) { return 'ABORT_SAFETY' }
     $logs = Get-LatestLogs
+    # Wrap in @(...) so a 0- or 1-line log (very common for a probe that
+    # exited fast) collapses to an empty/1-element array rather than $null
+    # or a bare empty string. Test-CoreCyclerProbeResult declares
+    # [string[]] $LogLines as Mandatory; an empty string would fail the
+    # binding even though [AllowEmptyCollection()] is set.
     $ccLines = @()
     $primeLines = @()
     if ($logs.coreCyclerLog -and (Test-Path $logs.coreCyclerLog)) {
-        $ccLines = Get-Content -Path $logs.coreCyclerLog -ErrorAction SilentlyContinue
+        $ccLines = @(Get-Content -Path $logs.coreCyclerLog -ErrorAction SilentlyContinue)
     }
     if ($logs.prime95Log -and (Test-Path $logs.prime95Log)) {
-        $primeLines = Get-Content -Path $logs.prime95Log -ErrorAction SilentlyContinue
+        $primeLines = @(Get-Content -Path $logs.prime95Log -ErrorAction SilentlyContinue)
     }
     Test-CoreCyclerProbeResult -LogLines $ccLines -PrimeLines $primeLines -ExitedCleanly $cleanExit
 }
