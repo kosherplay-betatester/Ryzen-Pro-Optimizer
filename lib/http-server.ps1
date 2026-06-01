@@ -29,16 +29,21 @@ function Start-HttpServer {
         [int]$MaxPort = 8775
     )
 
-    $listener = [System.Net.HttpListener]::new()
+    # A failed HttpListener.Start() nulls out the listener's Prefixes
+    # collection internally, so reusing the same instance across port
+    # attempts crashes the catch block with "null-valued expression".
+    # Build a fresh listener for each attempt instead.
     $port = $StartPort
+    $listener = $null
     while ($port -le $MaxPort) {
         try {
-            $listener.Prefixes.Clear()
+            $listener = [System.Net.HttpListener]::new()
             $listener.Prefixes.Add("http://127.0.0.1:$port/")
             $listener.Start()
             break
         } catch {
-            $listener.Prefixes.Clear()
+            try { $listener.Close() } catch {}
+            $listener = $null
             $port++
             if ($port -gt $MaxPort) { throw "No free port in range $StartPort-$MaxPort" }
         }
