@@ -168,8 +168,12 @@ function Invoke-ServerLoop {
             $filePath = Join-Path $WebRoot $relPath
             Send-FileResponse -Context $context -Path $filePath
         } catch {
-            Write-Log ERROR "Handler error: $($_.Exception.Message)"
-            try { Send-JsonResponse -Context $context -Status 500 -Data @{ ok=$false; error=$_.Exception.Message } } catch {}
+            $ex = $_.Exception
+            $typeName = $ex.GetType().FullName
+            $inner = if ($ex.InnerException) { " :: inner=$($ex.InnerException.GetType().FullName): $($ex.InnerException.Message)" } else { '' }
+            $stack = ($_.ScriptStackTrace -split "`n" | Select-Object -First 6) -join ' | '
+            Write-Log ERROR "Handler error on $method $rawUrl :: [$typeName] $($ex.Message)$inner :: $stack"
+            try { Send-JsonResponse -Context $context -Status 500 -Data @{ ok=$false; error=$ex.Message } } catch {}
         }
 
         # After each request, run the tick callback to check for shutdown conditions
