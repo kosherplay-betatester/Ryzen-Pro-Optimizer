@@ -665,8 +665,13 @@ Register-Route -Method GET -Path '/api/status' -Handler {
     $live = $null
     $whea = Get-WheaEvents
 
-    # Auto-transition from TESTING to REPORTING if CoreCycler has exited
-    if ($state.state -eq 'TESTING' -and -not (Test-CoreCyclerRunning)) {
+    # Auto-transition from TESTING to REPORTING if CoreCycler has exited.
+    # SmartTune doesn't keep CoreCycler running between probes — it spawns
+    # one per probe and the server is idle in between — so this check
+    # would otherwise trip the moment a SmartTune session starts, before
+    # the first probe even runs, and disarm the Safety Guard mid-tune.
+    $smartTuneActive = (Get-SmartTuneState -SinceSeqId 0).status -eq 'RUNNING'
+    if ($state.state -eq 'TESTING' -and -not $smartTuneActive -and -not (Test-CoreCyclerRunning)) {
         Stop-PeakTracking
         Disable-SafetyGuard
         Clear-PanicRevertState
