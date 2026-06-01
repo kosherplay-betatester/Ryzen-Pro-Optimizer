@@ -686,17 +686,25 @@ Register-Route -Method GET -Path '/api/status' -Handler {
         # The CO has already been written by $applyFn; the probe just runs
         # stress and returns the classification. Step-OneProbe invokes
         # $ProbeFn with no argument by design.
+        #
+        # $script:Tune must be captured as a local before .GetNewClosure():
+        # closures created inside a dynamically-invoked scriptblock (route
+        # handler) don't inherit the script's session state, so $script:*
+        # resolves to $null at invocation time. Hashtables are reference
+        # types, so mutations to $script:Tune.CurrentIdx etc. remain visible
+        # through $tune.
+        $tune = $script:Tune
         $probeFn = {
-            $rt = $script:Tune.Policy.probeRuntimeMin
+            $rt = $tune.Policy.probeRuntimeMin
             $timeout = [int]($rt * 60 * 2)   # 2x runtime as hard timeout
-            Invoke-Probe -RepoRoot $RepoRoot -ScopeCores $script:Tune.Scopes[$script:Tune.CurrentIdx].cores `
+            Invoke-Probe -RepoRoot $RepoRoot -ScopeCores $tune.Scopes[$tune.CurrentIdx].cores `
                 -TotalCores $cpu.Cores -ProbeRuntimeMin $rt -TimeoutSeconds $timeout `
                 -TickCallback { (Get-SafetyState).newAbort }
         }.GetNewClosure()
         $applyFn = {
             param($cand)
             $all = New-Object 'int[]' $cpu.Cores
-            $scope = $script:Tune.Scopes[$script:Tune.CurrentIdx]
+            $scope = $tune.Scopes[$tune.CurrentIdx]
             # Read current, then overwrite only this scope's cores
             $current = Get-AllCoreCo -CoreCount $cpu.Cores
             for ($i = 0; $i -lt $cpu.Cores; $i++) { $all[$i] = $current[$i] }
