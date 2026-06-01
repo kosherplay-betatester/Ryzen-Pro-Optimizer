@@ -181,6 +181,35 @@
 
   <div id="co-banner" class="card hidden"></div>
 
+  <!-- BIOS setup card: shown automatically when CO writes silently fail
+       (PBO/CO not enabled in BIOS) or as a first-time hint when launch
+       values are all zero. Dismissable; reappears if writes keep failing. -->
+  <section id="bios-setup-card" class="card bios-setup hidden">
+    <div class="bios-header">
+      <h2>⚙ Enable PBO + Curve Optimizer in your BIOS</h2>
+      <button id="bios-setup-dismiss" class="secondary" title="Hide this card">×</button>
+    </div>
+    <div id="bios-setup-reason" class="bios-reason"></div>
+    <p>
+      Curve Optimizer is a sub-feature of <strong>Precision Boost Overdrive (PBO)</strong> — both must be enabled in your motherboard's BIOS for any tuning tool (including this one) to take effect. The OS can only set the <em>offset values</em>; it cannot toggle PBO itself.
+      Reboot into BIOS once, change the settings below, save, and you're done — these stay set across reboots.
+    </p>
+    <div class="bios-tabs">
+      <button class="bios-tab active" data-vendor="asus">ASUS</button>
+      <button class="bios-tab" data-vendor="msi">MSI</button>
+      <button class="bios-tab" data-vendor="gigabyte">Gigabyte</button>
+      <button class="bios-tab" data-vendor="asrock">ASRock</button>
+      <button class="bios-tab" data-vendor="generic">Other / Generic</button>
+    </div>
+    <div id="bios-vendor-content"></div>
+    <p class="muted small">
+      💡 Tip: BIOS menu layouts vary by board model and AGESA version. If the exact path differs, search your BIOS for <strong>"PBO"</strong> or <strong>"Curve Optimizer"</strong> — they're usually in an "AMD Overclocking" or "Advanced CPU" section.
+    </p>
+    <p class="muted small">
+      🔍 After saving + rebooting, come back here and click <strong>Apply</strong> on any test CO value. If the read-back matches, you're set. If not, double-check the BIOS settings — some boards also have a <em>"PBO Limits"</em> setting that must be <em>"Motherboard"</em> or <em>"Manual"</em> (not <em>"Disabled"</em>).
+    </p>
+  </section>
+
   <section class="card hidden" id="curve-card">
     <h2>1. Set Curve Optimizer</h2>
     <div class="tabs">

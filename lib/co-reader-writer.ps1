@@ -167,3 +167,44 @@ function Reset-AllCoreCo {
     Set-AllCoreCo -Values $zeros
     Write-Log INFO "All $CoreCount cores reset to CO=0"
 }
+
+# Read back the per-core CO and compare against what we just wrote.
+# Returns:
+#   @{ stuck = $true;  mismatches = @() }     when every value took effect
+#   @{ stuck = $false; mismatches = @(...) }  when the SMU silently
+#                                              ignored the write - almost
+#                                              always means PBO + Curve
+#                                              Optimizer aren't enabled in
+#                                              BIOS. The SMU accepts the
+#                                              command (exit 0) but the
+#                                              actual register stays at
+#                                              whatever the BIOS set.
+#
+# Each mismatch entry: @{ core = N; wanted = X; actual = Y }.
+#
+# The "stuck" flag is the load-bearing signal for the UI's first-run
+# BIOS-setup card.
+function Test-CoWritesStuck {
+    param(
+        [Parameter(Mandatory)][int[]]$Wanted,
+        [Parameter(Mandatory)][int]$CoreCount
+    )
+    try {
+        $actual = Get-AllCoreCo -CoreCount $CoreCount
+    } catch {
+        Write-Log WARN "Read-back after write failed: $($_.Exception.Message)"
+        return @{ stuck = $null; mismatches = @() }   # unknown
+    }
+    $mismatches = @()
+    $n = [Math]::Min($Wanted.Count, $actual.Count)
+    for ($i = 0; $i -lt $n; $i++) {
+        if ($Wanted[$i] -ne $actual[$i]) {
+            $mismatches += @{ core = $i; wanted = $Wanted[$i]; actual = $actual[$i] }
+        }
+    }
+    @{
+        stuck      = ($mismatches.Count -eq 0)
+        mismatches = $mismatches
+        actual     = $actual
+    }
+}

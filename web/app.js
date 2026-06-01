@@ -196,7 +196,17 @@ async function applyCo() {
   const body = collectValues();
   const r = await fetchJson('/api/co', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
   if (!r.ok) { showToast('Apply failed: ' + r.error, 'error'); return; }
-  showToast('Applied ✓');
+  if (r.data && r.data.writesStuck === false) {
+    // Silent SMU ignore - PBO/CO almost certainly disabled in BIOS.
+    // Show the setup card with a specific "we tried, nothing happened" reason.
+    const n = (r.data.mismatches || []).length;
+    showToast('⚠ CO write was IGNORED by the SMU - PBO/CO probably disabled in BIOS', 'error');
+    BiosSetup.show(`Read-back shows <strong>${n} of ${cpuInfo ? cpuInfo.Cores : '?'}</strong> cores still at their BIOS values after the apply. The SMU accepted the command but didn't change the registers - the classic signature of PBO/CO being disabled in BIOS.`);
+  } else if (r.data && r.data.writesStuck === true) {
+    showToast('Applied ✓ (verified)');
+  } else {
+    showToast('Applied ✓');
+  }
   await loadCoValues();
 }
 
@@ -782,6 +792,12 @@ async function pollStatus() {
       lastWheaCount = s.wheaEvents.length;
     }
     if (s.smartTune) SmartTune.renderState(s.smartTune);
+    // Surface the BIOS-setup card if the server reports the last CO
+    // write didn't take effect (e.g. a Smart Tune apply silently failed).
+    if (s.coWritesActive === false) {
+      const n = (s.coWriteMismatches || []).length;
+      BiosSetup.show(`Server reports the last CO write was ignored by the SMU (<strong>${n}</strong> mismatched cores). PBO + Curve Optimizer are almost certainly disabled in BIOS.`);
+    }
     renderSafetyBanner(s);
   } catch (e) { /* server may be starting */ }
 }
@@ -1133,6 +1149,9 @@ document.addEventListener('DOMContentLoaded', async () => {
     await loadProfiles();
     await checkPanicRevert();
     await checkPendingSmartSession();
+    // First-run hint: launch CO all zeros + user has not dismissed = show
+    // the BIOS-setup card proactively. No-op if dismissed or CO has values.
+    BiosSetup.maybeShowAsFirstRunHint();
     pollTelemetry();
     pollStatus();
     sendHeartbeat();
@@ -1260,4 +1279,155 @@ const SmartTune = (() => {
   }
 
   return { renderState, start, stop, show, hide };
+})();
+
+// ============================================================================
+//  BiosSetup - shows BIOS-enable guidance when CO writes don't take effect
+// ============================================================================
+//  Shown when:
+//    1. /api/co or /api/co/revert returns writesStuck=false (definitive
+//       signal SMU silently ignored the write - PBO/CO not enabled in BIOS)
+//    2. On first load, if the launch snapshot is all zeros AND user hasn't
+//       previously dismissed (proactive hint for first-time users)
+//
+//  Dismissal persists in localStorage. If a write later fails despite
+//  dismissal, we re-show (the dismissal flag was wrong - they actually
+//  need the guidance after all).
+// ============================================================================
+const BiosSetup = (() => {
+  const DISMISS_KEY = 'rpo.biosSetupDismissed';
+
+  const VENDORS = {
+    asus: {
+      name: 'ASUS',
+      menu: '<strong class="path">Advanced → AMD Overclocking → Precision Boost Overdrive</strong>',
+      steps: [
+        'Press <code>Del</code> or <code>F2</code> at boot to enter BIOS, then press <code>F7</code> for Advanced Mode if not already there.',
+        'Navigate to <strong class="path">Advanced → AMD Overclocking</strong>. Accept the warning prompt.',
+        'Open <strong class="path">Precision Boost Overdrive</strong>.',
+        'Set <code>PBO Limits</code> to <code>Motherboard</code> (not Disabled, not Auto).',
+        'Set <code>Precision Boost Overdrive</code> to <code>Advanced</code>.',
+        'Set <code>Curve Optimizer</code> to <code>Per Core</code> (or <code>All Cores</code> if you prefer).',
+        'Leave the per-core offsets at <code>0</code> for now — this app will set them.',
+        'Press <code>F10</code> → Save & Exit. Boot back into Windows.'
+      ]
+    },
+    msi: {
+      name: 'MSI',
+      menu: '<strong class="path">OC → CPU Features → AMD Overclocking → Precision Boost Overdrive</strong>',
+      steps: [
+        'Press <code>Del</code> at boot to enter BIOS, then <code>F7</code> for Advanced Mode.',
+        'Navigate to <strong class="path">OC</strong> tab → scroll to <strong class="path">CPU Features</strong>.',
+        'Open <strong class="path">AMD Overclocking</strong>. Accept the warning prompt.',
+        'Open <strong class="path">Precision Boost Overdrive</strong>.',
+        'Set <code>PBO Limits</code> to <code>Motherboard</code>.',
+        'Set <code>Precision Boost Overdrive</code> to <code>Advanced</code>.',
+        'Set <code>Curve Optimizer</code> to <code>Per Core</code>.',
+        '<code>F10</code> → Save & Exit.'
+      ]
+    },
+    gigabyte: {
+      name: 'Gigabyte',
+      menu: '<strong class="path">Tweaker → Advanced CPU Settings → Precision Boost Overdrive</strong>',
+      steps: [
+        'Press <code>Del</code> at boot, then <code>F2</code> for Advanced Mode.',
+        'Navigate to <strong class="path">Tweaker</strong> tab.',
+        'Open <strong class="path">Advanced CPU Settings</strong> (or <strong class="path">AMD Overclocking</strong> on some models).',
+        'Open <strong class="path">Precision Boost Overdrive</strong>.',
+        'Set <code>PBO Mode</code> to <code>Advanced</code>.',
+        'Set <code>PBO Limits</code> to <code>Motherboard</code>.',
+        'Open <strong class="path">Curve Optimizer</strong> sub-menu, set to <code>Per Core</code>.',
+        '<code>F10</code> → Save & Exit.'
+      ]
+    },
+    asrock: {
+      name: 'ASRock',
+      menu: '<strong class="path">OC Tweaker → AMD Overclocking → Precision Boost Overdrive</strong>',
+      steps: [
+        'Press <code>F2</code> or <code>Del</code> at boot.',
+        'Open <strong class="path">OC Tweaker</strong> tab.',
+        'Open <strong class="path">AMD Overclocking</strong> (accept the warning).',
+        'Open <strong class="path">Precision Boost Overdrive</strong>.',
+        'Set <code>PBO Limits</code> to <code>Motherboard</code>.',
+        'Set <code>Precision Boost Overdrive</code> to <code>Advanced</code>.',
+        'Set <code>Curve Optimizer</code> to <code>Per Core</code>.',
+        '<code>F10</code> → Save & Exit.'
+      ]
+    },
+    generic: {
+      name: 'Other / Generic',
+      menu: 'Search for "PBO" or "Curve Optimizer" in your BIOS',
+      steps: [
+        'Enter BIOS (usually <code>Del</code>, <code>F2</code>, or <code>F12</code> at boot — check your motherboard manual).',
+        'Switch to <code>Advanced</code> mode if your BIOS has an EZ Mode toggle.',
+        'Look for an <strong class="path">AMD Overclocking</strong> menu, or search the BIOS for <strong>"PBO"</strong>.',
+        'Find <strong class="path">Precision Boost Overdrive</strong> — set the master enable to <code>Advanced</code> (not Auto, not Disabled).',
+        'Find <strong class="path">PBO Limits</strong> — set to <code>Motherboard</code> (sometimes called "Auto-Motherboard" or just "Manual").',
+        'Find <strong class="path">Curve Optimizer</strong> — set to <code>Per Core</code>. Leave offsets at <code>0</code>.',
+        'Save & Exit (usually <code>F10</code>).',
+        'If you cannot find these menus, look in the manual under "AMD CBS" or "AMD Overclocking" — they are sometimes nested 3-4 levels deep.'
+      ]
+    }
+  };
+
+  function renderVendor(key) {
+    const v = VENDORS[key] || VENDORS.generic;
+    const html = `<div style="font-size:0.85rem;color:var(--muted);margin-bottom:0.3rem">
+        Typical menu path: ${v.menu}
+      </div>
+      <ol>${v.steps.map(s => `<li>${s}</li>`).join('')}</ol>`;
+    const target = document.getElementById('bios-vendor-content');
+    if (target) target.innerHTML = html;
+    document.querySelectorAll('.bios-tab').forEach(t => {
+      t.classList.toggle('active', t.dataset.vendor === key);
+    });
+  }
+
+  function isDismissed() {
+    try { return localStorage.getItem(DISMISS_KEY) === '1'; }
+    catch (_) { return false; }
+  }
+
+  function setDismissed(yes) {
+    try {
+      if (yes) localStorage.setItem(DISMISS_KEY, '1');
+      else     localStorage.removeItem(DISMISS_KEY);
+    } catch (_) {}
+  }
+
+  function show(reasonHtml) {
+    const card = document.getElementById('bios-setup-card');
+    if (!card) return;
+    card.classList.remove('hidden');
+    const reasonEl = document.getElementById('bios-setup-reason');
+    if (reasonEl) reasonEl.innerHTML = reasonHtml || '';
+    if (!document.querySelector('.bios-tab.active')) renderVendor('asus');
+    card.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
+
+  function hide() {
+    document.getElementById('bios-setup-card')?.classList.add('hidden');
+  }
+
+  // First-load hint: if launch values are all zeros AND user hasn't
+  // dismissed, show the card as a proactive nudge.
+  function maybeShowAsFirstRunHint() {
+    if (isDismissed()) return;
+    if (!launchValues || !launchValues.length) return;
+    const allZero = launchValues.every(v => v === 0);
+    if (!allZero) return;
+    show('Your launch Curve Optimizer is all zeros. If you have not enabled PBO + Curve Optimizer in your BIOS yet, here is how. Dismiss this card if you already have them enabled.');
+  }
+
+  document.addEventListener('click', e => {
+    if (e.target.classList?.contains('bios-tab') && e.target.dataset.vendor) {
+      renderVendor(e.target.dataset.vendor);
+    }
+    if (e.target.id === 'bios-setup-dismiss') {
+      hide();
+      setDismissed(true);
+    }
+  });
+
+  return { show, hide, maybeShowAsFirstRunHint, isDismissed };
 })();

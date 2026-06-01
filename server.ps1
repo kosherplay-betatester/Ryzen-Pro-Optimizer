@@ -108,6 +108,15 @@ try {
 # Last report cache
 $script:LastReport = $null
 
+# Tracks whether the most recent CO write actually took effect at the SMU.
+# $null = unknown (no write attempted yet this session)
+# $true = last write verified by read-back
+# $false = SMU silently ignored - the strongest signal we have that PBO +
+#         Curve Optimizer aren't enabled in BIOS. The UI surfaces a
+#         setup-help card in that case.
+$script:LastWriteStuck = $null
+$script:LastWriteMismatches = @()
+
 # Heartbeat tracking: when browser stops pinging, server reverts CO and exits.
 # DISABLED BY DEFAULT - Chrome's memory saver / tab discard / RDP disconnects
 # would otherwise kill the service mid-test. User must opt in via UI checkbox.
@@ -258,7 +267,19 @@ Register-Route -Method POST -Path '/api/co' -Handler {
         Save-PanicRevertState -Values $values -Reason "Manual /api/co apply ($($body.mode))"
         Set-AllCoreCo -Values $values
         Clear-PanicRevertState
-        @{ ok = $true; data = @{ applied = $values } }
+        # Read-back verification: if the SMU silently ignored the write
+        # (PBO/CO not enabled in BIOS), surface that immediately.
+        $verify = Test-CoWritesStuck -Wanted $values -CoreCount $cpu.Cores
+        $script:LastWriteStuck      = $verify.stuck
+        $script:LastWriteMismatches = $verify.mismatches
+        if ($verify.stuck -eq $false) {
+            Write-Log WARN "CO write did NOT stick - $($verify.mismatches.Count) cores still at BIOS values. PBO/CO likely disabled in BIOS."
+        }
+        @{ ok = $true; data = @{
+            applied      = $values
+            writesStuck  = $verify.stuck
+            mismatches   = $verify.mismatches
+        } }
     } catch {
         @{ ok = $false; error = $_.Exception.Message }
     }
@@ -268,7 +289,11 @@ Register-Route -Method POST -Path '/api/reset-co' -Handler {
     if (-not $coReady) { return @{ ok = $false; error = 'CO tool not initialized' } }
     try {
         Reset-AllCoreCo -CoreCount $cpu.Cores
-        @{ ok = $true; data = @{ reset = $true } }
+        $zeros = New-Object 'int[]' $cpu.Cores
+        $verify = Test-CoWritesStuck -Wanted $zeros -CoreCount $cpu.Cores
+        $script:LastWriteStuck      = $verify.stuck
+        $script:LastWriteMismatches = $verify.mismatches
+        @{ ok = $true; data = @{ reset = $true; writesStuck = $verify.stuck } }
     } catch {
         @{ ok = $false; error = $_.Exception.Message }
     }
@@ -279,7 +304,10 @@ Register-Route -Method POST -Path '/api/co/revert' -Handler {
     if ($null -eq $launchSnapshot) { return @{ ok = $false; error = 'No launch snapshot' } }
     try {
         Set-AllCoreCo -Values $launchSnapshot
-        @{ ok = $true; data = @{ reverted = $launchSnapshot } }
+        $verify = Test-CoWritesStuck -Wanted $launchSnapshot -CoreCount $cpu.Cores
+        $script:LastWriteStuck      = $verify.stuck
+        $script:LastWriteMismatches = $verify.mismatches
+        @{ ok = $true; data = @{ reverted = $launchSnapshot; writesStuck = $verify.stuck } }
     } catch {
         @{ ok = $false; error = $_.Exception.Message }
     }
@@ -707,7 +735,12 @@ Register-Route -Method GET -Path '/api/status' -Handler {
             bodyguardActive = (Test-WheaWatcherActive)
             safetyGuard = (Get-SafetyState)
             panicRevertPending = ($null -ne $script:PendingPanicRevert)
-            smartTune = (Get-SmartTuneState -SinceSeqId 0)   # NEW
+            smartTune = (Get-SmartTuneState -SinceSeqId 0)
+            # writesActive: $null = no write attempted yet this session;
+            # $true = last write took effect; $false = SMU silently ignored
+            # (UI shows the BIOS-setup card in that case).
+            coWritesActive = $script:LastWriteStuck
+            coWriteMismatches = @($script:LastWriteMismatches)
         }
     }
 }

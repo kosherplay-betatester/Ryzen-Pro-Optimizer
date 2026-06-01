@@ -500,3 +500,51 @@ kbd { background: var(--border); padding: 0.1rem 0.4rem; border-radius: 3px; fon
   justify-content: center; cursor: pointer;
 }
 .disclaimer-remember input { cursor: pointer; }
+
+/* ============ BIOS-setup card ============ */
+.bios-setup {
+  background: linear-gradient(180deg, #1a1410 0%, #1a1f2b 100%);
+  border-color: var(--warning);
+  border-left-width: 4px;
+}
+.bios-header {
+  display: flex; justify-content: space-between; align-items: center;
+  margin-bottom: 0.4rem;
+}
+.bios-header h2 { margin: 0; color: var(--warning); }
+.bios-header button { padding: 0.2rem 0.6rem; font-size: 1.1rem; line-height: 1; }
+.bios-reason {
+  background: rgba(245, 158, 11, 0.10);
+  border-left: 3px solid var(--warning);
+  padding: 0.5rem 0.8rem;
+  margin-bottom: 0.7rem;
+  border-radius: 0 4px 4px 0;
+  font-size: 0.9rem;
+  font-variant-numeric: tabular-nums;
+}
+.bios-reason:empty { display: none; }
+.bios-tabs {
+  display: flex; gap: 0.3rem; margin: 0.8rem 0 0.6rem; flex-wrap: wrap;
+  border-bottom: 1px solid var(--border); padding-bottom: 0.4rem;
+}
+.bios-tab {
+  background: transparent; color: var(--muted); border: 1px solid var(--border);
+  padding: 0.35rem 0.8rem; border-radius: 4px 4px 0 0; cursor: pointer;
+  font-family: inherit; font-size: 0.85rem; font-weight: 600;
+}
+.bios-tab:hover { color: var(--text); }
+.bios-tab.active { background: var(--warning); color: #1a1410; border-color: var(--warning); }
+#bios-vendor-content {
+  padding: 0.4rem 0;
+  font-size: 0.88rem;
+  line-height: 1.55;
+}
+#bios-vendor-content ol { padding-left: 1.4rem; margin: 0.4rem 0 0.8rem; }
+#bios-vendor-content ol li { margin: 0.25rem 0; }
+#bios-vendor-content code {
+  background: rgba(245, 158, 11, 0.15);
+  padding: 0.05rem 0.35rem; border-radius: 3px;
+  font-family: ui-monospace, Consolas, monospace; font-size: 0.85em;
+  color: var(--warning);
+}
+#bios-vendor-content strong.path { color: var(--accent); }
