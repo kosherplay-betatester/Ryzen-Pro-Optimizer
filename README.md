@@ -2,7 +2,7 @@
 
 A friendly, local web-based UI for tuning AMD Ryzen **Curve Optimizer** offsets — sets per-core CO values from Windows (no BIOS reboot), runs stress tests via [CoreCycler](https://github.com/sp00n/corecycler), parses logs into a clean pass/fail report with smart next-step suggestions, and shows live CPU telemetry the whole time.
 
-Now ships with a **Pro Dashboard** (live charts, V/F scatter, per-core heatmap, history export), a **Safety Guard** that hard-aborts stress tests on temp/voltage/WHEA breaches, and a **panic-revert breadcrumb** that survives BSODs so the next boot can roll back to safe values automatically.
+Now ships with a **Pro Dashboard** (live charts, V/F scatter, per-core heatmap, history export), a **Safety Guard** that hard-aborts stress tests on temp/voltage/WHEA breaches, a **panic-revert breadcrumb** that survives BSODs so the next boot can roll back to safe values automatically, a **Smart Auto-Adjust** bisection-based tuner with five goal modes + V-Cache awareness + cross-session learning, a **Tune Theater** live narrative UI that shows every step the algorithm takes, an opt-in **startup disclaimer** that walks the user through the risks of CPU undervolting, and a **first-run BIOS-setup helper** that auto-detects when PBO/CO isn't enabled in BIOS and shows per-vendor menu paths.
 
 Think of it as a free, open, transparent, manual-by-default alternative to Hydra — built on top of CoreCycler so the proven stress-test machinery is doing the heavy lifting, while we focus on the UX, safety, and live visibility layer most users actually need.
 
@@ -18,7 +18,7 @@ This app removes the BIOS round-trips and the config-file fiddling. You set valu
 
 ## What's in the box
 
-### 🎛 Curve Optimizer setting (from Windows, no reboot)
+### ◆ Curve Optimizer setting (from Windows, no reboot)
 - **Three modes:** All cores · Per-CCD · Per-core — matches the layout in your BIOS
 - **Auto-detected starting values:** on launch, reads your currently active CO (from BIOS or last session) and shows it in a banner — your form pre-fills with those values, you edit what you want to change
 - **Diff-aware Apply:** the Apply button is disabled until you actually change something; tooltip shows the delta
@@ -26,16 +26,47 @@ This app removes the BIOS round-trips and the config-file fiddling. You set valu
 - **Reset CO (panic):** instantly sets all cores to 0 — works mid-test, works from the Esc key, no confirmation dialog
 - **Panic-revert breadcrumb:** every CO write drops a tiny JSON file *before* the SMU register touch. If the system crashes mid-write, the next boot detects the breadcrumb and offers to revert. Your remote tuning session can BSOD without leaving you stranded.
 
-### 🔬 Stability testing
+### ▶ Stability testing — three modes
 - **Test runner:** wraps CoreCycler. Selectable Prime95 mode: SSE (default, best for CO), AVX2, AVX512
 - **User-defined cycle count:** default 1 (quick check), recommends 3+ for confidence, accepts up to 10000 for overnight runs
 - **Manual mode (default):** you set CO, run test, get report, decide next move
 - **Auto-Adjust mode:** opts into CoreCycler's AutomaticTestMode — when a core errors, CoreCycler bumps its offset upward (less negative) and retries, walking each core to its individual stable edge autonomously
-- **Smart Auto-Adjust (coming soon):** see [the design spec](docs/superpowers/specs/2026-05-28-smart-auto-adjust-design.md). A bisection-based, telemetry-aware, history-learning auto-tuner with five user-selectable goal modes (Daily Driver / Max Stable / Adaptive / Characterize / Overclock), V-Cache CCD asymmetry handling, crash-recovery resume, and a fully transparent live narrative.
+- **Smart Auto-Adjust (Pro) — see next section**
 - **Live status during tests:** which core is testing, current iteration, error counts, runtime
 - **Stop button + Esc** during a test exits cleanly; CoreCycler config restored
 
-### 🛡 Safety Guards (auto-tune watchdog)
+### ⌬ Smart Auto-Adjust (Pro)
+A bisection-based, telemetry-aware, history-learning auto-tuner that replaces CoreCycler's linear "increment on error" loop. **Five user-selectable goal modes** plus an overclock direction toggle:
+
+| Mode | Direction | Time | Iter./value | Per-CCD vs per-core | Safety margin |
+|---|---|---|---|---|---|
+| **Daily Driver** *(default)* | undervolt | 30–60 min | 2 clean | per-CCD | +2 points (safer) |
+| **Max Stable** | undervolt | 3–6 h | 5 clean + cross-check | per-CCD then per-core refine | +1 point |
+| **Adaptive** | undervolt | hours/days, background | continuous re-verify | per-core, slow-growth | +2 points |
+| **Characterize** | both | ~1 h | 1 short pass per probe | per-core | n/a (insight only) |
+| **Overclock** | overshoot (+) | 1–2 h | 3 clean | per-core | –1 point (toward safer) |
+
+Under the hood:
+- **Hybrid bisection algorithm** with telemetry-modulated step sizing — steps shrink as the CPU approaches your safety limits, expand when there's lots of headroom. Direction-aware (correctly tracks "shallowest fail" for both undervolt and overclock).
+- **V-Cache CCD asymmetry handling** — auto-detects X3D parts (7950X3D, 9950X3D, etc.); V-Cache CCD gets tighter bounds (e.g., floor -25 vs -30) and is probed *first* so failures happen fast on the more delicate silicon.
+- **Persistent cross-session learning** — `runtime/tuner-history.jsonl` is append-only; every probe result becomes a permanent data point. Future sessions seed bisection from known-stable / known-crash bounds and *never re-probe* a value that has previously crashed your specific CPU.
+- **Crash-recovery resume** — interrupted sessions can be picked back up across reboots. The mid-probe value gets recorded as `ABORT_CRASH` in history (worst class — permanent guard rail). Resume rebuilds the orchestrator state from `runtime/tuner-session.json`.
+- **Safety-margin locking** — the final committed value is always shifted *away* from the discovered edge by the mode's margin (e.g., Daily Driver locks at edge+2 toward zero). Never the absolute edge.
+- **Single-iteration probe loop** driven by `/api/status` ticks, so the HTTP server stays responsive between Prime95 runs.
+
+Per the design spec at [`docs/superpowers/specs/2026-05-28-smart-auto-adjust-design.md`](docs/superpowers/specs/2026-05-28-smart-auto-adjust-design.md). 84 Pester unit tests cover the search engine, history queries, mode policies, narrative buffer, probe classifier, and orchestrator state machine.
+
+### ▣ Tune Theater
+The transparency layer for Smart Auto-Adjust runs. Auto-opens above the Pro Dashboard when a Smart Tune starts. Shows:
+- **Progress header** — overall %, per-scope status pills, rough ETA
+- **"Currently" strip** — what the algorithm is doing *right now* (e.g., "Probing CCD1 at CO=-22 · Prime95 SSE · 3m 12s in"), updated every second
+- **Per-scope ladder cards** — bounds (`floor..ceiling`), live `knownStable | knownUnstable` window, probe count, locked value, 🔋 marker on V-Cache scopes
+- **Live narrative log** — every probe start, every classification, every bound tighten, every history hit, every safety event, with icons (⚙ lifecycle · ▦ history · ◇ safety · ◆ planning · ▣ panic-revert · ➤ probe · ✓ PASS · ✗ FAIL · ⚠ WHEA · ▣ lock · ↻ retry). Pinnable autoscroll.
+- **Resume/discard banner on next launch** — if a session was interrupted, the UI offers to pick up where you left off or start fresh.
+
+The narrative log is fed via `GET /api/smart-tune/state?since=<seqId>` — a paginated stream that lets multiple browser tabs stay in sync without re-downloading the whole history each poll.
+
+### ◇ Safety Guards (auto-tune watchdog)
 A live limit-checker that runs alongside any test and **hard-aborts** the moment any of these trip:
 
 | Limit | Default | Configurable |
@@ -55,7 +86,7 @@ On abort, the guard:
 
 This is the seatbelt: even a misconfigured Auto-Adjust run that wanders into unstable territory gets caught before a BSOD.
 
-### 📊 Pro Dashboard (live charts + insights)
+### ▦ Pro Dashboard (live charts + insights)
 Toggleable card (📊 button in the top-right of the page, auto-opens when a test starts) with:
 
 - **Per-core clock chart** — one line per physical core, rolling window
@@ -70,7 +101,7 @@ Toggleable card (📊 button in the top-right of the page, auto-opens when a tes
 
 The Pro Dashboard charts stream off the same `/api/telemetry` endpoint your basic telemetry strip already uses — they're just rendered with Chart.js (vendored offline, no CDN dependency).
 
-### 📊 Live telemetry (always visible)
+### ⌗ Live telemetry (always visible)
 **Compact strip** always in view: package temp, package power (PPT), average voltage, max clock, with one click to expand.
 
 **Expanded inline grid:** per-core voltage / clock / load for each core (16 physical cores on a 7950X3D, not the 32 SMT siblings). CCDs labelled, V-Cache marked on X3D parts. Color-coded background by temperature.
@@ -79,7 +110,7 @@ The Pro Dashboard charts stream off the same `/api/telemetry` endpoint your basi
 
 Sensors read via the open-source [LibreHardwareMonitorLib](https://github.com/LibreHardwareMonitor/LibreHardwareMonitor) DLL. **Important:** modern LibreHardwareMonitor releases ship a `.NET 10` build that Windows PowerShell 5.1 cannot load — the installer pulls the older `.NET Framework 4.7.2` build from NuGet instead, and the launcher self-heals if it ever finds an incompatible DLL. (Details in [Troubleshooting](#troubleshooting).)
 
-### 🚨 WHEA Bodyguard
+### ⚠ WHEA Bodyguard
 A background watcher subscribed to Windows' WHEA event log. Always on while the app is running.
 - Event-driven (Windows pushes events to us — zero CPU when idle, zero polling)
 - Real-time UI alert: header indicator turns red, toast notification appears, optional audio beep
@@ -87,7 +118,7 @@ A background watcher subscribed to Windows' WHEA event log. Always on while the 
 - Persists across restarts (`runtime/bodyguard-log.json`)
 - Hooks into the Safety Guard — a WHEA event during an Auto-Adjust run triggers an automatic step-back (configurable)
 
-### 📁 Profiles
+### ▤ Profiles
 - Save your CO settings as named JSON profiles with optional notes
 - One-click reapply after reboot (CO values are temporary by Windows design — BIOS values return on every boot)
 - Tagged with the CPU model — UI warns if you try to apply a profile saved on a different CPU
@@ -96,10 +127,26 @@ A background watcher subscribed to Windows' WHEA event log. Always on while the 
 ### ⚙ Shutdown behaviour (no more accidental kills)
 By default, the service runs until **you** stop it (terminal Ctrl+C, closing the cmd window, or the in-page shutdown button). Closing the browser tab does **not** kill it — because Chrome's memory-saver and RDP disconnects look identical to a closed tab and would otherwise terminate your tuning run while you weren't looking. Opt-in checkbox in Settings if you do want tab-close to stop the server.
 
-### ❓ Help (in-app)
+### ⓘ Help (in-app)
 A slide-out **?** panel with two tabs:
 - **Quick Start** — what CO is, the silicon lottery, step-by-step usage, the Esc panic key
 - **Advanced** — Auto-Adjust mode, V-Cache strategy, step-size guidance, WHEA explained, profile semantics, troubleshooting
+
+### ⚠ Startup disclaimer
+On first launch, a full-screen modal walks the user through the real risks of CPU undervolting / overclocking: BSOD / data loss, remote-session blindness (RDP can leave you stranded after a freeze), the worst-case CMOS reset, hardware wear from sustained Prime95, why WHEA = stop, and the fact that all SMU writes are temporary (BIOS values return on reboot). User has to explicitly click **"I understand the risks · Continue"** to dismiss it.
+
+Acceptance is versioned in `localStorage` (`rpo.disclaimerAccepted = 'v1'`), so future disclaimer wording changes will re-prompt. A **"⚠ Show risk disclaimer again"** button in Settings lets the user re-read it on demand.
+
+### ⚙ First-run BIOS-setup helper (auto-detection)
+**The hard constraint:** Curve Optimizer is a sub-feature of Precision Boost Overdrive (PBO), and **both must be enabled in BIOS** before any OS-level tool — including this one — can take effect. No OS tool can enable PBO at runtime in a way that persists across reboots; AMD's SMU does not expose a public command for it, and even Ryzen Master's "Manual PBO" mode evaporates on reboot.
+
+What this app does about it:
+- **Read-back verification on every CO write** — `Test-CoWritesStuck` in `lib/co-reader-writer.ps1` reads back the per-core CO values immediately after a write and compares element-wise. If the SMU silently ignored the write (the signature of PBO/CO disabled in BIOS), the API response includes `writesStuck: false` with the list of mismatches.
+- **Auto-shown BIOS-setup card** — the UI surfaces a tabbed help card with vendor-specific menu paths (ASUS, MSI, Gigabyte, ASRock, plus a Generic fallback) the moment a write doesn't stick. The card explains exactly where in the BIOS to find PBO + Curve Optimizer for that vendor.
+- **First-run proactive hint** — on initial page load, if your launch CO snapshot is all zeros AND you've never dismissed the card, it shows up automatically as a "looks like you might be a first-timer" nudge. Dismiss it once and it stays dismissed (localStorage `rpo.biosSetupDismissed`) — unless a write later fails, in which case it re-surfaces with the specific error context.
+- **Post-Apply toast** — if a write succeeds AND verification passes, the toast says "Applied ✓ (verified)". If verification fails, you get a red toast: "⚠ CO write was IGNORED by the SMU - PBO/CO probably disabled in BIOS".
+
+So a user who has never set foot in their BIOS gets diagnosed and guided automatically without having to read this README.
 
 ---
 
@@ -289,8 +336,26 @@ Ryzen-Pro-Optimizer/
 │   ├── smart-suggestions.ps1         ← context-aware recommendations
 │   ├── whea-watcher.ps1              ← Event Log subscription,
 │   │                                   concurrent queue
-│   └── safety-guard.ps1              ← live limit checker, hysteresis,
-│                                       abort callback, step-back logic
+│   ├── safety-guard.ps1              ← live limit checker, hysteresis,
+│   │                                   abort callback, step-back logic
+│   ├── smart-tuner-modes.ps1         ← Smart Auto-Adjust: mode policy
+│   │                                   data table (5 modes)
+│   ├── smart-tuner-search.ps1        ← Smart Auto-Adjust: pure bisection
+│   │                                   engine (New-ScopeState,
+│   │                                   Get-NextCandidate,
+│   │                                   Update-ScopeFromResult,
+│   │                                   Test-ScopeConverged, Get-LockInValue)
+│   ├── smart-tuner-history.ps1       ← Smart Auto-Adjust: append-only
+│   │                                   JSONL ledger + queries
+│   │                                   (Get-KnownCrashFloor,
+│   │                                   Get-KnownStableCeiling,
+│   │                                   Get-Confidence, Compact-History)
+│   ├── smart-tuner-narrative.ps1     ← Smart Auto-Adjust: ring buffer
+│   │                                   narrative log with seqId pagination
+│   └── smart-tuner.ps1               ← Smart Auto-Adjust: orchestrator
+│                                       (Start/Stop/Discard/Resume,
+│                                       Plan-TuneSession, Step-SmartTune,
+│                                       Tune-Scope, session persistence)
 ├── web/
 │   ├── index.html                    ← page structure: telemetry strip,
 │   │                                   Pro Dashboard, test card, settings
@@ -317,10 +382,18 @@ Ryzen-Pro-Optimizer/
 │   ├── launch-snapshot.json              CO values at server start
 │   ├── generated-config.ini              the config we hand to CoreCycler
 │   ├── bodyguard-log.json                WHEA event history
-│   └── panic-revert.json                 written before every CO change,
-│                                         deleted on success — its
-│                                         presence on next boot signals
-│                                         "previous session crashed"
+│   ├── panic-revert.json                 written before every CO change,
+│   │                                     deleted on success — its
+│   │                                     presence on next boot signals
+│   │                                     "previous session crashed"
+│   ├── tuner-session.json                Smart Auto-Adjust: rewritten
+│   │                                     atomically after each probe so
+│   │                                     a crash mid-session is resumable
+│   └── tuner-history.jsonl               Smart Auto-Adjust: append-only
+│                                         JSONL ledger, per-CPU-model
+│                                         partitioned, capped at 10k
+│                                         entries (crash entries never
+│                                         pruned)
 ├── tests/                            ← Pester test files
 └── docs/superpowers/
     ├── specs/                        ← design specs (incl. Smart
@@ -340,9 +413,9 @@ All endpoints are JSON. Bound to `127.0.0.1` only.
 | GET | `/api/cpu` | Detected CPU info (name, cores, CCDs, V-Cache, CO support) |
 | GET | `/api/co/current` | Live CO values from SMU |
 | GET | `/api/co/launch` | The snapshot captured when the server started |
-| POST | `/api/co` | Apply CO values. Body: `{ mode: 'all-cores'\|'per-ccd'\|'per-core', values: {...} }`. Wrapped in panic-revert breadcrumb. |
-| POST | `/api/reset-co` | Set all cores to 0 (panic) |
-| POST | `/api/co/revert` | Apply the launch-time snapshot |
+| POST | `/api/co` | Apply CO values. Body: `{ mode: 'all-cores'\|'per-ccd'\|'per-core', values: {...} }`. Wrapped in panic-revert breadcrumb. Response includes `writesStuck` (read-back verification) and `mismatches` (per-core deltas if SMU ignored the write — BIOS PBO/CO probably disabled). |
+| POST | `/api/reset-co` | Set all cores to 0 (panic). Response includes `writesStuck`. |
+| POST | `/api/co/revert` | Apply the launch-time snapshot. Response includes `writesStuck`. |
 | GET | `/api/profiles` | List saved profiles |
 | POST | `/api/profiles` | Save a profile |
 | DELETE | `/api/profiles/{name}` | Delete a profile |
@@ -352,7 +425,7 @@ All endpoints are JSON. Bound to `127.0.0.1` only.
 | GET | `/api/telemetry/peaks` | Max values seen during current/last test |
 | POST | `/api/test/start` | Start a test. Body: `{ mode, iterations, autoAdjust?, autoMax?, autoInc?, coresToTest?, safety:{maxTempC,maxVid,abortOnWhea} }`. Safety object arms the Safety Guard. |
 | POST | `/api/test/stop` | Stop running test (Ctrl+C → fallback to kill). Disables Safety Guard. |
-| GET | `/api/status` | State machine status + live test progress + WHEA events + Safety Guard state + panic-revert pending flag |
+| GET | `/api/status` | State machine status + live test progress + WHEA events + Safety Guard state + panic-revert pending flag + `smartTune` (full Smart Tune state with narrative entries since `?since=<seqId>`) + `coWritesActive` (true/false/null from last verification) + `coWriteMismatches` |
 | GET | `/api/report` | Latest test report (verdict + cores failed + peaks + suggestions) |
 | GET | `/api/whea` | Full WHEA event list |
 | POST | `/api/whea/clear` | Clear stored WHEA events |
@@ -362,6 +435,13 @@ All endpoints are JSON. Bound to `127.0.0.1` only.
 | GET | `/api/panic-revert` | Returns the pending panic-revert breadcrumb if one exists (from a previous crashed session) |
 | POST | `/api/panic-revert/apply` | Reverts CO to launch snapshot and clears the breadcrumb |
 | POST | `/api/panic-revert/dismiss` | Clears the breadcrumb without applying anything |
+| POST | `/api/smart-tune/start` | Start a Smart Auto-Adjust session. Body: `{ mode: 'daily-driver'\|'max-stable'\|'adaptive'\|'characterize'\|'overclock', direction: 'undervolt'\|'overclock' }`. Arms the Safety Guard with auto-revert-to-launch-on-trip. |
+| POST | `/api/smart-tune/stop` | Stop the running Smart Tune; disables Safety Guard; transitions to REPORTING. |
+| GET | `/api/smart-tune/state` | Full session state + narrative entries newer than `?since=<seqId>` (paginated). Driven by the browser's 1Hz `/api/status` poll. |
+| POST | `/api/smart-tune/resume` | Rebuild a previous session's orchestrator state from `runtime/tuner-session.json` and resume the loop. The interrupted probe is recorded as `ABORT_CRASH` in history (permanent guard rail). |
+| POST | `/api/smart-tune/discard` | Wipe the pending session JSON without resuming. |
+| GET | `/api/smart-tune/history` | All probe history for the detected CPU model (per-CPU partitioned JSONL). |
+| GET | `/api/smart-tune/pending-session` | Returns the pending session JSON if one exists on startup (UI shows the resume/discard banner). |
 
 ---
 
@@ -376,6 +456,9 @@ All endpoints are JSON. Bound to `127.0.0.1` only.
 - **WHEA events** during a stress test are a strong signal: even if Prime95 doesn't error out, the CPU detected and corrected hardware errors. Back off the CO offset.
 - **The service does not auto-shut-down when you close the browser tab** (Chrome's memory-saver and RDP disconnects look like a closed tab). The terminal window is the master switch. Opt-in checkbox if you do want tab-close to stop the server.
 - **The "silicon lottery"** is real. Every CPU is unique, every core within it is unique. Your weakest core caps your all-cores limit. Expect trial and error. The Smart Suggestions are designed to keep you moving in the right direction without false promises.
+- **PBO + Curve Optimizer must be enabled in BIOS once.** No OS tool can enable PBO at runtime in a way that persists across reboots — AMD's SMU does not expose a public command for it. The app verifies every write by read-back and surfaces a BIOS-setup card automatically if the SMU silently ignores the write.
+- **Smart Auto-Adjust never re-probes a previously crashed value.** The per-CPU JSONL history is append-only; every `FAIL_WHEA` / `ABORT_CRASH` / `TIMEOUT` becomes a permanent guard rail. Even across reinstalls — keep `runtime/tuner-history.jsonl` around if you want to retain the learning.
+- **Locked-in CO values always have a safety margin.** Smart Auto-Adjust never commits the absolute discovered edge — it shifts toward zero by the mode's `marginPoints` (e.g., Daily Driver = +2 toward neutral). The point of the bisection is to *find* the edge; the point of the margin is to *not sit there*.
 
 ---
 
@@ -397,6 +480,10 @@ All endpoints are JSON. Bound to `127.0.0.1` only.
 | Browser doesn't open automatically | Default browser misconfig | Server window shows the URL — open it manually |
 | WHEA indicator never goes green | Watcher failed to subscribe | Usually needs admin (which `Launch.bat` provides). Check `runtime/server.log` for `Failed to start` |
 | Audio beep on WHEA doesn't fire | Browser autoplay policy or audio muted | Click anywhere on the page once (autoplay needs a user gesture); ensure tab audio isn't muted; check the toggle in Safety Guards settings |
+| Apply toast says "⚠ CO write was IGNORED by the SMU" or the BIOS-setup card appears automatically | PBO + Curve Optimizer disabled in BIOS — SMU accepts writes but registers stay at the BIOS defaults | Reboot into BIOS, enable PBO + Curve Optimizer (the card shows per-vendor menu paths). Save & Exit. The next Apply will read-back-verify; you'll see "Applied ✓ (verified)" when it sticks. |
+| Smart Tune session won't start | State machine isn't IDLE, or CoreCycler/CO tool aren't ready | Stop any running test first; verify Install.bat completed; check `runtime/server.log` for the actual `Cannot start - state=...` reason |
+| Tune Theater appears blank during a Smart Tune | Initial probe hasn't completed yet — Prime95 needs 30-60s warm-up | Wait. The "Currently" strip updates every second; the bisection ladder fills in as probes complete. |
+| "Previous Smart Tune session detected" banner on launch | Last session was interrupted (BSOD, process kill, crash mid-tune) | Click **Resume** to continue from the next pending scope (the interrupted probe is recorded as `ABORT_CRASH` in history — permanent guard rail), or **Discard** to start fresh |
 
 Server log lives at `runtime/server.log` (rotates at 5 MB).
 
@@ -404,10 +491,23 @@ Server log lives at `runtime/server.log` (rotates at 5 MB).
 
 ## Roadmap
 
-- **Smart Auto-Adjust** — bisection-based replacement for CoreCycler's linear Auto-Adjust, with telemetry-feedback step sizing, V-Cache CCD asymmetry, crash-recovery resume, persistent per-CPU history, and a transparent live narrative log. Five user-selectable goal modes plus an overclock direction toggle. See [the design spec](docs/superpowers/specs/2026-05-28-smart-auto-adjust-design.md).
-- **AVX2/AVX-512 stress matrix** in Max Stable mode (currently SSE-focused).
-- **Per-core thermal budget** — V-Cache CCD cores that consistently run hotter than siblings get a per-core temp guard, not just per-CCD.
-- **"Compare two CPUs" view** — if `tuner-history.json` accumulates data for multiple CPU models.
+Shipped in the current build (see [`docs/superpowers/specs/`](docs/superpowers/specs/) and [`docs/superpowers/plans/`](docs/superpowers/plans/) for the design + execution records):
+- ✓ Pro Dashboard with Chart.js live charts, V/F scatter, per-core heatmap, history export
+- ✓ Safety Guard with hysteresis, hard-abort, auto-revert to launch snapshot on trip
+- ✓ Panic-revert breadcrumb surviving BSODs
+- ✓ Startup risk disclaimer with versioned acceptance
+- ✓ Smart Auto-Adjust orchestrator + five goal modes + V-Cache CCD asymmetry handling
+- ✓ Tune Theater live narrative UI with seqId-paginated state stream
+- ✓ Cross-session history learning + crash-as-data-point recording
+- ✓ Resume-SmartTune for interrupted sessions
+- ✓ Write-verify on every CO apply + auto-detected first-run BIOS-setup card
+
+Next up:
+- **AVX2 / AVX-512 stress matrix in Max Stable mode** — currently the orchestrator only invokes Prime95 SSE; Max Stable would benefit from a multi-workload cross-check pass after the bisection converges.
+- **Per-core thermal budget** — V-Cache CCD cores that consistently run hotter than siblings could get a per-core temp guard in addition to the per-CCD policy.
+- **"Compare two CPUs" history view** — if `tuner-history.jsonl` accumulates data for multiple CPU models on the same install, surface a side-by-side comparison.
+- **Selected-cores Smart Tune** — a future option to scope a Smart Tune run to a user-picked subset of cores (e.g., only the V-Cache CCD) instead of always the full plan.
+- **AGESA-version detection** — read the running BIOS AGESA via WMI and warn if it's known-buggy for CO on the user's chipset.
 
 ---
 
