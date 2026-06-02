@@ -132,6 +132,12 @@ function Inspect-SafetySnapshot {
         return @()
     }
 
+    # Wrap the whole inspection. This runs from /api/status at 1Hz - a
+    # bad snapshot must never 500 the polling endpoint or the UI loses
+    # the entire status stream until the next tick clears the issue.
+    # On error: log, leave violation state untouched, return empty.
+    try {
+
     $violations = New-Object System.Collections.Generic.List[object]
     $maxTemp = $script:Safety.MaxTempC
     $maxVid  = $script:Safety.MaxVid
@@ -141,18 +147,24 @@ function Inspect-SafetySnapshot {
         $violations.Add(@{ metric='Pkg Temp'; value=[double]$Snapshot.packageTemp; limit=$maxTemp; severity='abort' })
     }
     foreach ($c in @($Snapshot.ccdTemps)) {
-        if ($c.tempC -ge $maxTemp) {
+        if ($null -ne $c -and $null -ne $c.tempC -and $c.tempC -ge $maxTemp) {
             $violations.Add(@{ metric="CCD$($c.ccd) Temp"; value=[double]$c.tempC; limit=$maxTemp; severity='abort' })
         }
     }
     # Per-core VID checks
     foreach ($core in @($Snapshot.cores)) {
-        if ($null -ne $core.voltage -and $core.voltage -ge $maxVid) {
+        if ($null -ne $core -and $null -ne $core.voltage -and $core.voltage -ge $maxVid) {
             $violations.Add(@{ metric="Core $($core.core) VID"; value=[double]$core.voltage; limit=$maxVid; severity='warning' })
         }
     }
-    # WHEA delta during guarded run
-    $wheaDelta = [Math]::Max(0, $WheaCount - $script:Safety.WheaBaseline)
+    # WHEA delta during guarded run. Avoid [Math]::Max - PowerShell can
+    # wrap hashtable values in PSObject and overload resolution then
+    # throws "Argument types do not match". Explicit int coercion + a
+    # plain `if` comparison are bulletproof.
+    $wcInt   = [int]$WheaCount
+    $baseInt = [int]$script:Safety.WheaBaseline
+    $wheaDelta = $wcInt - $baseInt
+    if ($wheaDelta -lt 0) { $wheaDelta = 0 }
     if ($script:Safety.AbortOnWhea -and $wheaDelta -gt 0) {
         $violations.Add(@{ metric='WHEA delta'; value=$wheaDelta; limit=0; severity='abort' })
     }
@@ -198,6 +210,15 @@ function Inspect-SafetySnapshot {
     }
 
     return $violations
+
+    } catch {
+        # Log once per failure with full type/stack info, then degrade
+        # to no-op for this tick. Next /api/status will retry on a
+        # fresh snapshot.
+        $ex = $_.Exception
+        Write-Log WARN "Inspect-SafetySnapshot failed (returning empty for this tick): [$($ex.GetType().FullName)] $($ex.Message) :: $($_.ScriptStackTrace -split "`n" | Select-Object -First 3 -join ' | ')"
+        return @()
+    }
 }
 
 function Get-SafetyState {
