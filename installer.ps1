@@ -30,6 +30,14 @@
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
+# Force TLS 1.2 for github.com / api.nuget.org. Windows PowerShell 5.1's
+# default on un-patched Windows can still be Tls10/Tls11, both of which both
+# hosts refused since 2022. Without this, downloads fail mid-handshake with
+# the unhelpful "The underlying connection was closed: An unexpected error
+# occurred on a send" and zero useful detail. -bor so we keep whatever the
+# user already negotiated and only add Tls12.
+[Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12
+
 . "$PSScriptRoot\lib\logging.ps1"
 
 $RepoRoot = $PSScriptRoot
