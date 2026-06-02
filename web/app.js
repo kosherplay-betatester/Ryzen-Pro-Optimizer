@@ -829,14 +829,65 @@ async function loadProfiles() {
     loadedProfiles = r.data || [];
     const list = document.getElementById('profiles-list');
     if (loadedProfiles.length === 0) { list.innerHTML = '<p class="muted small">No profiles saved yet.</p>'; return; }
-    list.innerHTML = loadedProfiles.map(p => `
-      <div class="profile">
-        <span class="grow"><strong>${p.name}</strong> <span class="muted small">· ${p.mode} · ${p.cpuModel || ''}${p.notes ? ' · ' + p.notes : ''}</span></span>
-        <button data-load="${encodeURIComponent(p.name)}" class="secondary" title="Load into form (no apply)">Load</button>
-        <button data-apply="${encodeURIComponent(p.name)}" class="primary" title="Apply immediately">Apply</button>
-        <button data-delete="${encodeURIComponent(p.name)}" class="secondary" title="Delete">×</button>
-      </div>`).join('');
+    list.innerHTML = loadedProfiles.map(p => {
+      const enc = encodeURIComponent(p.name);
+      return `
+      <div class="profile-row">
+        <div class="profile">
+          <span class="grow"><strong>${p.name}</strong> <span class="muted small">· ${p.mode} · ${p.cpuModel || ''}${p.notes ? ' · ' + p.notes : ''}</span></span>
+          <button data-details="${enc}" class="secondary" title="Preview the saved settings">Details</button>
+          <button data-load="${enc}" class="secondary" title="Load into form (no apply)">Load</button>
+          <button data-apply="${enc}" class="primary" title="Apply immediately">Apply</button>
+          <button data-delete="${enc}" class="secondary" title="Delete">×</button>
+        </div>
+        <div class="profile-details hidden" id="profile-details-${enc}"></div>
+      </div>`;
+    }).join('');
   } catch (e) { /* ignore */ }
+}
+
+// Inline-expand a profile's full settings under its row. Toggles closed
+// if already open. Groups per-core values by CCD so a dual-CCD profile
+// shows CCD0/CCD1 sections matching the rest of the UI's conventions.
+function toggleProfileDetails(profileName) {
+  const p = loadedProfiles.find(x => x.name === profileName);
+  if (!p) { showToast('Profile not found', 'error'); return; }
+  const el = document.getElementById('profile-details-' + encodeURIComponent(profileName));
+  if (!el) return;
+  if (!el.classList.contains('hidden')) { el.classList.add('hidden'); el.innerHTML = ''; return; }
+
+  const arr = expandProfileValues(p) || [];
+  const ccds = {};
+  arr.forEach((v, i) => {
+    const ccd = cpuInfo && cpuInfo.IsDualCcd ? Math.floor(i / cpuInfo.CoresPerCcd) : 0;
+    (ccds[ccd] = ccds[ccd] || []).push({ core: i, value: v });
+  });
+  const pillClass = v => v < 0 ? 'neg' : v > 0 ? 'pos' : 'zero';
+  const fmt = v => (v > 0 ? '+' : '') + v;
+  let valuesHtml = '';
+  Object.keys(ccds).sort((a, b) => +a - +b).forEach(ccd => {
+    const label = cpuInfo && cpuInfo.VCacheCcdIndex === +ccd ? `CCD${ccd} (V-Cache)` : `CCD${ccd}`;
+    const pills = ccds[ccd].map(c => `<span class="co-pill ${pillClass(c.value)}" title="Core ${c.core}">C${c.core}: ${fmt(c.value)}</span>`).join('');
+    valuesHtml += `<div class="muted small" style="margin-top:0.4rem">${label}</div><div class="co-pills">${pills}</div>`;
+  });
+
+  const created = p.createdAt ? new Date(p.createdAt).toLocaleString() : '?';
+  const summary = summarizeCo(arr);
+  el.innerHTML = `
+    <div class="details-grid">
+      <div><span class="muted small">Mode:</span> <strong>${p.mode}</strong></div>
+      <div><span class="muted small">CPU:</span> ${p.cpuModel || '?'}</div>
+      <div><span class="muted small">Cores:</span> ${p.coreCount || arr.length || '?'}</div>
+      <div><span class="muted small">CCDs:</span> ${p.ccdCount || '?'}</div>
+      <div><span class="muted small">Saved:</span> ${created}</div>
+      <div><span class="muted small">Summary:</span> ${summary}</div>
+      ${p.notes ? `<div class="details-notes"><span class="muted small">Notes:</span> ${p.notes}</div>` : ''}
+    </div>
+    <div class="details-values">
+      <span class="muted small">Curve Optimizer offsets (per-core view):</span>
+      ${valuesHtml || '<span class="muted small">No values</span>'}
+    </div>`;
+  el.classList.remove('hidden');
 }
 
 async function loadHelpContent() {
@@ -886,6 +937,9 @@ document.addEventListener('click', async e => {
       break;
     }
   }
+  if (e.target.dataset && e.target.dataset.details) {
+    toggleProfileDetails(decodeURIComponent(e.target.dataset.details));
+  }
   if (e.target.dataset && e.target.dataset.load) {
     loadProfileIntoForm(decodeURIComponent(e.target.dataset.load));
   }
@@ -918,6 +972,7 @@ document.addEventListener('change', e => {
     document.getElementById('smart-options').classList.toggle('hidden', v !== 'smart');
     document.getElementById('mode-info-auto').classList.toggle('hidden', v !== 'auto');
     document.getElementById('mode-info-manual').classList.toggle('hidden', v !== 'manual');
+    document.getElementById('mode-info-smart').classList.toggle('hidden', v !== 'smart');
     const btn = document.getElementById('start-test');
     if (btn) btn.textContent = v === 'smart' ? '▶ Start Smart Tune'
                               : v === 'auto'  ? '▶ Start Auto-Adjust'

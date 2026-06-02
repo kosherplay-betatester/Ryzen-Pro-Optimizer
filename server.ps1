@@ -383,7 +383,16 @@ Register-Route -Method POST -Path '/api/test/start' -Handler {
     if ($auto) {
         if ($body.PSObject.Properties['autoMax']) { $autoMax = [int]$body.autoMax }
         if ($body.PSObject.Properties['autoInc']) { $autoInc = [int]$body.autoInc }
-        if ($coReady) { $autoStart = Get-AllCoreCo -CoreCount $cpu.Cores }
+        if ($coReady) {
+            $autoStart = Get-AllCoreCo -CoreCount $cpu.Cores
+            # Snapshot the current CO as a regular profile so the user can roll
+            # back if Auto-Adjust converges somewhere worse than the starting
+            # point. Best-effort: never block the test on a snapshot failure.
+            try {
+                Save-PreTuneSnapshot -Process 'auto-adjust' -CurrentValues $autoStart `
+                    -CpuModel $cpu.Name -CcdCount $cpu.CcdCount | Out-Null
+            } catch { Write-Log WARN "Pre-Auto-Adjust snapshot failed: $($_.Exception.Message)" }
+        }
     }
 
     # Pull per-run safety overrides (UI passes settings.safety on each start)
@@ -535,6 +544,15 @@ Register-Route -Method POST -Path '/api/smart-tune/start' -Handler {
     $mode      = if ($body -and $body.mode) { [string]$body.mode } else { 'daily-driver' }
     $direction = if ($body -and $body.direction) { [string]$body.direction } else { 'undervolt' }
     try {
+        # Snapshot the current CO as a regular profile so the user can roll
+        # back if Smart Tune converges somewhere worse than the starting
+        # point. Best-effort: never block the tune on a snapshot failure.
+        try {
+            $currentCo = Get-AllCoreCo -CoreCount $cpu.Cores
+            Save-PreTuneSnapshot -Process 'smart-tune' -CurrentValues $currentCo `
+                -CpuModel $cpu.Name -CcdCount $cpu.CcdCount | Out-Null
+        } catch { Write-Log WARN "Pre-Smart-Tune snapshot failed: $($_.Exception.Message)" }
+
         Start-SmartTune -Cpu $cpu -Mode $mode -Direction $direction `
             -SessionPath $script:SmartTuneSessionPath -HistoryPath $script:SmartTuneHistoryPath
         Set-CurrentState -NewState 'TESTING' -Data @{

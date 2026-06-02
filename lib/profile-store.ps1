@@ -83,6 +83,30 @@ function Save-CoProfile {
     $profile
 }
 
+# Auto-snapshot the current CO before a risky tuning run (Auto-Adjust or
+# Smart Auto-Adjust). Saved as a regular per-core profile so it shows up
+# in the Profiles list and can be loaded/applied back if a tune ends up
+# in a worse place than it started. Name format keeps snapshots from
+# different runs distinguishable at a glance.
+function Save-PreTuneSnapshot {
+    param(
+        [Parameter(Mandatory)][ValidateSet('auto-adjust','smart-tune')][string]$Process,
+        [Parameter(Mandatory)][int[]]$CurrentValues,
+        [string]$CpuModel = '',
+        [int]$CcdCount = 0
+    )
+    $stamp = (Get-Date -Format 'yyyy-MM-dd-HHmmss')
+    $name = "pre-$Process-$stamp"
+    $valuesObj = [ordered]@{}
+    for ($i = 0; $i -lt $CurrentValues.Count; $i++) {
+        $valuesObj["$i"] = [int]$CurrentValues[$i]
+    }
+    $label = if ($Process -eq 'auto-adjust') { 'Auto-Adjust' } else { 'Smart Auto-Adjust' }
+    Save-CoProfile -Name $name -Mode 'per-core' -Values $valuesObj `
+        -CpuModel $CpuModel -CoreCount $CurrentValues.Count -CcdCount $CcdCount `
+        -Notes "Auto-snapshot taken before $label run"
+}
+
 function Remove-CoProfile {
     param([string]$Name)
     if (-not $script:ProfilesDir) { return $false }

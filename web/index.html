@@ -239,7 +239,8 @@
     </div>
 
     <div id="mode-info-auto" class="info-box hidden">
-      <strong>Auto-Adjust (autotuning)</strong> — CoreCycler runs the stress test and <em>automatically</em> bumps each core's CO offset upward (less negative) whenever that core errors, then re-tests it. Walks each core to its individual stable edge. Set how far it can back off (Max value) and how aggressively it steps (Increment).
+      <strong>Auto-Adjust (autotuning) · per-core tuning</strong> — CoreCycler runs the stress test and <em>automatically</em> bumps each core's CO offset upward (less negative) whenever that core errors, then re-tests it. Walks each core to its individual stable edge. Set how far it can back off (Max value) and how aggressively it steps (Increment).
+      <p class="muted small" style="margin:0.4rem 0 0 0">📸 Before this run starts, your current CO values are auto-saved as a profile named <code>pre-auto-adjust-…</code> in the Profiles section — load it back if you want to undo.</p>
       <ul class="info-list">
         <li><strong>Starting values</strong> = your current per-core CO (read from SMU at test start)</li>
         <li><strong>Max value</strong> = the least-negative offset Auto-Adjust is allowed to reach. <code>0</code> means "give up at neutral"; <code>5</code> would allow positive offset (rarely useful, usually risky)</li>
@@ -269,14 +270,27 @@
       <div class="co-input">
         <label>Goal mode:</label>
         <select id="smart-mode">
-          <option value="daily-driver" selected>Daily Driver — 30–60 min, safe daily values</option>
-          <option value="max-stable">Max Stable — 3–6 h, deepest verified offsets</option>
-          <option value="adaptive">Adaptive — runs for hours/days, continuously refines</option>
-          <option value="characterize">Characterize — map each core's V/F behaviour (insight)</option>
-          <option value="overclock">Overclock — positive CO offsets to chase higher boost</option>
+          <option value="daily-driver" selected>Daily Driver — per-CCD · 30–60 min, safe daily values</option>
+          <option value="max-stable">Max Stable — per-CCD + per-core · 3–6 h, deepest verified offsets</option>
+          <option value="adaptive">Adaptive — per-CCD + per-core · runs for hours/days, continuously refines</option>
+          <option value="characterize">Characterize — per-CCD + per-core · map each core's V/F behaviour</option>
+          <option value="overclock">Overclock — per-CCD + per-core · positive CO offsets to chase higher boost</option>
         </select>
       </div>
       <p class="muted small">Smart Auto-Adjust uses bisection + telemetry + crash history. See the Tune Theater for live progress.</p>
+    </div>
+
+    <div id="mode-info-smart" class="info-box hidden">
+      <strong>Smart Auto-Adjust (Pro)</strong> — bisection search guided by live telemetry headroom and prior crash history. Each Goal Mode picks its own granularity:
+      <ul class="info-list">
+        <li><strong>Daily Driver</strong> — <em>per-CCD only</em>. One stable offset for each CCD. Fastest to converge.</li>
+        <li><strong>Max Stable</strong> — per-CCD pass, then per-core refinement. Finds each core's individual edge.</li>
+        <li><strong>Adaptive</strong> — per-CCD then per-core. Re-probes continuously to follow silicon drift.</li>
+        <li><strong>Characterize</strong> — per-CCD then per-core. Maps each core's V/F behaviour (insight, lighter verification).</li>
+        <li><strong>Overclock</strong> — per-CCD then per-core, positive offsets.</li>
+      </ul>
+      <p class="muted small" style="margin:0.4rem 0 0 0"><strong>Per-CCD</strong> = one offset applied to every core on a CCD (fast; less granular). <strong>Per-core</strong> = each core gets its own offset (slower; finds the weakest-core ceiling). The two-phase modes (per-CCD then per-core) get the speed of per-CCD plus the precision of per-core.</p>
+      <p class="muted small" style="margin:0.4rem 0 0 0">📸 Before this run starts, your current CO values are auto-saved as a profile named <code>pre-smart-tune-…</code> in the Profiles section — load it back if you want to undo.</p>
     </div>
 
     <div class="actions">
