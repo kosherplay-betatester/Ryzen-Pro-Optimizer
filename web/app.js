@@ -1397,19 +1397,30 @@ async function checkPanicRevert() {
     const r = await fetchJson('/api/panic-revert');
     if (!r.ok || !r.data) return;
     const p = r.data;
-    const html = `<h2>⚠ Previous run crash detected</h2>
-      <p>The last session left a panic-revert breadcrumb at <code>${escHtml(new Date(p.capturedAt).toLocaleString())}</code>.<br>
-      It was in the middle of <strong>${escHtml(p.reason)}</strong> with CO values <code>${escHtml((p.values || []).join(','))}</code>.</p>
-      <p>This usually means a BSOD or hard hang while tuning. Recommended: revert to the launch snapshot, then start the next test with safer limits.</p>
+    const html = `
+      <div class="recovery-header">
+        <span class="recovery-icon">⚠</span>
+        <div class="recovery-title">
+          <h2>Previous run crash detected</h2>
+          <div class="recovery-sub">A BSOD, hard hang, or process kill left a panic-revert breadcrumb. Recommended: revert to the launch snapshot, then start the next test with safer limits.</div>
+        </div>
+      </div>
+      <div class="recovery-details">
+        <div><span class="muted small">Captured at</span><strong>${escHtml(new Date(p.capturedAt).toLocaleString())}</strong></div>
+        <div><span class="muted small">Reason</span><strong>${escHtml(p.reason)}</strong></div>
+        <div><span class="muted small">CO at crash</span><strong>${escHtml((p.values || []).join(','))}</strong></div>
+      </div>
       <div class="actions">
-        <button class="primary" id="panic-revert-apply">Revert to launch snapshot</button>
+        <button class="primary big" id="panic-revert-apply">↶ Revert to launch snapshot</button>
         <button class="secondary" id="panic-revert-dismiss">Dismiss</button>
       </div>`;
     const banner = document.createElement('div');
-    banner.className = 'card warn';
+    banner.className = 'card recovery-card';
     banner.id = 'panic-revert-card';
     banner.innerHTML = html;
     document.querySelector('main').insertBefore(banner, document.querySelector('main').firstChild);
+    showRecoveryBadge('Crash recovery available');
+    banner.scrollIntoView({ behavior: 'smooth', block: 'start' });
   } catch (_) {}
 }
 
@@ -1418,44 +1429,80 @@ async function checkPendingSmartSession() {
     const r = await fetchJson('/api/smart-tune/pending-session');
     if (!r.ok || !r.data) return;
     const p = r.data;
-    const html = `<h2>⏸ Smart Tune session was in progress when the system stopped</h2>
-      <p>Mode: <strong>${escHtml(p.mode || '?')}</strong> · status when stopped: <strong>${escHtml(p.status || '?')}</strong></p>
-      <p>You can resume from this point, or discard the session and start fresh.</p>
+    const html = `
+      <div class="recovery-header">
+        <span class="recovery-icon">⏸</span>
+        <div class="recovery-title">
+          <h2>Smart Tune was paused</h2>
+          <div class="recovery-sub">A previous session was interrupted before it finished. Continue where it left off, or start fresh.</div>
+        </div>
+      </div>
+      <div class="recovery-details">
+        <div><span class="muted small">Mode</span><strong>${escHtml(p.mode || '?')}</strong></div>
+        <div><span class="muted small">Status when stopped</span><strong>${escHtml(p.status || '?')}</strong></div>
+      </div>
       <div class="actions">
-        <button class="primary" id="smart-resume">Resume</button>
-        <button class="secondary" id="smart-discard">Discard</button>
+        <button class="primary big" id="smart-resume">▶ Resume from last position</button>
+        <button class="secondary" id="smart-discard">✕ Discard session</button>
       </div>`;
     const banner = document.createElement('div');
-    banner.className = 'card warn';
+    banner.className = 'card recovery-card';
     banner.id = 'smart-pending-card';
     banner.innerHTML = html;
     document.querySelector('main').insertBefore(banner, document.querySelector('main').firstChild);
+    // Surface a header badge so the user notices recovery options even
+    // if they're scrolled away from the top - they ARE easy to miss
+    // mixed in with the regular card stream.
+    showRecoveryBadge('Smart Tune paused');
+    banner.scrollIntoView({ behavior: 'smooth', block: 'start' });
   } catch (_) {}
 }
 
+function showRecoveryBadge(text) {
+  const header = document.querySelector('header .header-actions');
+  if (!header || document.getElementById('recovery-badge')) return;
+  const b = document.createElement('button');
+  b.id = 'recovery-badge';
+  b.className = 'recovery-badge';
+  b.title = 'Jump to the recovery prompt at the top of the page';
+  b.innerHTML = `<span class="recovery-badge-dot"></span><span>${escHtml(text)}</span>`;
+  b.addEventListener('click', () => {
+    const card = document.getElementById('smart-pending-card') || document.getElementById('panic-revert-card');
+    if (card) card.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  });
+  header.insertBefore(b, header.firstChild);
+}
+
 document.addEventListener('click', async e => {
-  if (e.target.id === 'panic-revert-apply') {
+  if (e.target.id === 'panic-revert-apply' || e.target.closest?.('#panic-revert-apply')) {
     const r = await fetchJson('/api/panic-revert/apply', { method: 'POST' });
-    if (r.ok) { showToast('Reverted to launch snapshot'); document.getElementById('panic-revert-card')?.remove(); loadCoValues(); }
-    else showToast('Revert failed: ' + r.error, 'error');
+    if (r.ok) {
+      showToast('Reverted to launch snapshot');
+      document.getElementById('panic-revert-card')?.remove();
+      document.getElementById('recovery-badge')?.remove();
+      loadCoValues();
+    } else showToast('Revert failed: ' + r.error, 'error');
   }
-  if (e.target.id === 'panic-revert-dismiss') {
+  if (e.target.id === 'panic-revert-dismiss' || e.target.closest?.('#panic-revert-dismiss')) {
     await fetchJson('/api/panic-revert/dismiss', { method: 'POST' });
     document.getElementById('panic-revert-card')?.remove();
+    document.getElementById('recovery-badge')?.remove();
   }
-  if (e.target.id === 'smart-resume') {
+  if (e.target.id === 'smart-resume' || e.target.closest?.('#smart-resume')) {
     const r = await fetchJson('/api/smart-tune/resume', { method: 'POST' });
     if (r.ok) {
       showToast('Smart Tune resumed');
       document.getElementById('smart-pending-card')?.remove();
+      document.getElementById('recovery-badge')?.remove();
       SmartTune.show();
     } else {
       showToast('Resume failed: ' + r.error, 'error');
     }
   }
-  if (e.target.id === 'smart-discard') {
+  if (e.target.id === 'smart-discard' || e.target.closest?.('#smart-discard')) {
     await fetchJson('/api/smart-tune/discard', { method: 'POST' });
     document.getElementById('smart-pending-card')?.remove();
+    document.getElementById('recovery-badge')?.remove();
     showToast('Discarded');
   }
 });

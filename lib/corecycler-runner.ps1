@@ -210,7 +210,11 @@ function Get-LatestLogs {
 }
 
 function Parse-LiveStatus {
-    param([string[]]$LogLines)
+    # Accept anything (null, empty string, single line, array). PowerShell's
+    # [string[]] parameter binding rejects bare empty strings ("") even
+    # with [AllowEmptyCollection()], which Get-Content can produce when a
+    # log has exactly one empty line. Coerce inside the function instead.
+    param([object]$LogLines = $null)
     $info = @{
         currentCore     = $null
         iteration       = $null
@@ -219,8 +223,9 @@ function Parse-LiveStatus {
         wheaErrors      = 0
         runtime         = $null
     }
-    if (-not $LogLines) { return $info }
-    foreach ($line in $LogLines) {
+    if ($null -eq $LogLines -or $LogLines -eq '') { return $info }
+    $lines = @($LogLines)
+    foreach ($line in $lines) {
         if ($line -match 'Set to Core (\d+)') { $info.currentCore = [int]$Matches[1] }
         elseif ($line -match 'Iteration (\d+)/(\d+)') { $info.iteration = [int]$Matches[1]; $info.iterationsTotal = [int]$Matches[2] }
         elseif ($line -match 'cores with an error so far:\s+(\d+)') { $info.errors = [int]$Matches[1] }
@@ -245,11 +250,17 @@ function Get-LiveStatus {
 # didn't exit cleanly, else PASS. The caller layers ABORT_SAFETY on
 # top by checking the Safety Guard separately.
 function Test-CoreCyclerProbeResult {
+    # Same defensive pattern as Parse-LiveStatus. [string[]] binding can
+    # reject a bare empty string even with AllowEmptyCollection; using
+    # [object] + coerce-inside is bulletproof across every weird thing
+    # Get-Content can return (null, "", single line, array, locked file).
     param(
-        [Parameter(Mandatory)][AllowEmptyCollection()][string[]]$LogLines,
-        [Parameter(Mandatory)][AllowEmptyCollection()][string[]]$PrimeLines,
+        [object]$LogLines = $null,
+        [object]$PrimeLines = $null,
         [Parameter(Mandatory)][bool]$ExitedCleanly
     )
+    $LogLines   = if ($null -eq $LogLines -or $LogLines -eq '')   { @() } else { @($LogLines) }
+    $PrimeLines = if ($null -eq $PrimeLines -or $PrimeLines -eq '') { @() } else { @($PrimeLines) }
     foreach ($l in $LogLines) {
         if ($l -match 'cores with a WHEA error so far:\s*([1-9])') { return 'FAIL_WHEA' }
     }

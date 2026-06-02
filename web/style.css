@@ -156,6 +156,50 @@ h3 { font-size: 0.9rem; margin: 1rem 0 0.4rem; color: var(--text); }
 .live-co-tab:hover { color: var(--text); }
 .live-co-tab.active { background: var(--primary); color: white; border-color: var(--primary); }
 
+/* Recovery card - shown when a previous session left a smart-tune
+   pending or a panic-revert breadcrumb. Visually stronger than a
+   regular .card.warn so users don't scroll past it. */
+.recovery-card {
+  border-left: 6px solid var(--warning);
+  background: rgba(245, 158, 11, 0.08);
+  margin-bottom: 1.5rem;
+  box-shadow: 0 4px 18px rgba(245, 158, 11, 0.15);
+  position: relative;
+}
+.recovery-header { display: flex; align-items: flex-start; gap: 1rem; margin-bottom: 0.8rem; }
+.recovery-icon { font-size: 2.3rem; line-height: 1; animation: recovery-pulse 1.5s infinite; flex-shrink: 0; }
+@keyframes recovery-pulse { 0%, 100% { transform: scale(1); opacity: 1; } 50% { transform: scale(1.08); opacity: 0.7; } }
+.recovery-title h2 { margin: 0; font-size: 1.2rem; color: var(--warning); }
+.recovery-sub { color: var(--text); font-size: 0.92rem; margin-top: 0.2rem; }
+.recovery-details {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 0.6rem 1.2rem;
+  background: rgba(255,255,255,0.03);
+  border-radius: 4px;
+  padding: 0.6rem 0.9rem;
+  margin: 0.5rem 0 0.8rem;
+}
+.recovery-details > div { display: flex; flex-direction: column; gap: 0.15rem; }
+.recovery-details strong { font-size: 0.95rem; font-variant-numeric: tabular-nums; }
+.recovery-card .actions button.big { padding: 0.6rem 1.2rem; font-size: 1rem; }
+
+/* Header badge - sits next to the bodyguard indicator so the recovery
+   prompt is visible even when scrolled away from the top */
+.recovery-badge {
+  display: inline-flex; align-items: center; gap: 0.4rem;
+  background: rgba(245, 158, 11, 0.15);
+  border: 1px solid var(--warning);
+  color: var(--warning);
+  border-radius: 16px;
+  padding: 0.3rem 0.8rem;
+  font-size: 0.85rem;
+  cursor: pointer;
+  font-weight: 600;
+}
+.recovery-badge:hover { background: rgba(245, 158, 11, 0.25); }
+.recovery-badge-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--warning); animation: recovery-pulse 1.5s infinite; display: inline-block; }
+
 /* Footer version line */
 .footer-version { margin-top: 0.4rem; font-size: 0.7rem; color: var(--muted); opacity: 0.7; }
 .footer-version a { color: var(--muted); text-decoration: none; }
