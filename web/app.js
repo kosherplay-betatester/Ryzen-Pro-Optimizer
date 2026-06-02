@@ -93,6 +93,28 @@ async function loadCpu() {
   if (!cpuInfo.IsDualCcd) document.getElementById('tab-ccd').classList.add('hidden');
 }
 
+// Auto-pick the form mode that best represents the current per-core array.
+// Uniform across all cores -> all-cores. Each CCD internally uniform but
+// CCDs differ -> per-ccd. Anything mixed -> per-core. This is what makes a
+// per-CCD apply visible on reload (without it, the form always defaulted to
+// all-cores and showed only the first core, looking like the apply lost).
+function detectCoMode(values, cpu) {
+  if (!values || !values.length || !cpu) return 'all-cores';
+  if (values.every(v => v === values[0])) return 'all-cores';
+  if (cpu.IsDualCcd && cpu.CcdCount > 1) {
+    const cpc = cpu.CoresPerCcd;
+    let ccdUniform = true;
+    for (let c = 0; c < cpu.CcdCount && ccdUniform; c++) {
+      const first = values[c * cpc];
+      for (let i = 1; i < cpc; i++) {
+        if (values[c * cpc + i] !== first) { ccdUniform = false; break; }
+      }
+    }
+    if (ccdUniform) return 'per-ccd';
+  }
+  return 'per-core';
+}
+
 async function loadCoValues() {
   if (!cpuInfo || !cpuInfo.SupportsCurveOptimizer) return;
   try {
@@ -101,6 +123,16 @@ async function loadCoValues() {
     launchValues = launchR.data;
     currentValues = currentR.data;
     if (currentValues) {
+      // Switch to whichever tab matches the live SMU state. Skips if the
+      // user has a profile staged (formInitialValues set) - they'd want
+      // the staged mode, not the SMU mode.
+      if (!formInitialValues) {
+        const detected = detectCoMode(currentValues, cpuInfo);
+        if (detected !== currentMode) {
+          currentMode = detected;
+          document.querySelectorAll('.tab').forEach(t => t.classList.toggle('active', t.dataset.mode === detected));
+        }
+      }
       const banner = document.getElementById('co-banner');
       banner.classList.remove('hidden');
       banner.innerHTML = `🎯 Detected current Curve Optimizer settings: <strong>${summarizeCo(currentValues)}</strong> <span class="muted">(loaded as your starting point)</span>`;
@@ -192,8 +224,52 @@ function collectValues() {
   }
 }
 
+// yyyy-MM-dd-HHmmss to match the pre-tune snapshot naming convention.
+function nowSlug() {
+  const d = new Date();
+  const pad = n => n.toString().padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}-${pad(d.getHours())}${pad(d.getMinutes())}${pad(d.getSeconds())}`;
+}
+
+let pendingApplyBody = null;
+
+// Apply gateway: shows a confirm modal with the settings the user is about
+// to write, and offers to auto-save them as a named profile first. The
+// actual SMU write lives in performApply.
 async function applyCo() {
   const body = collectValues();
+  pendingApplyBody = body;
+  const arr = expandProfileValues(body) || [];
+  const summary = summarizeCo(arr);
+  // Build per-CCD pill chips matching the profile-details preview style.
+  const ccds = {};
+  arr.forEach((v, i) => {
+    const ccd = cpuInfo && cpuInfo.IsDualCcd ? Math.floor(i / cpuInfo.CoresPerCcd) : 0;
+    (ccds[ccd] = ccds[ccd] || []).push({ core: i, value: v });
+  });
+  const pillClass = v => v < 0 ? 'neg' : v > 0 ? 'pos' : 'zero';
+  const fmt = v => (v > 0 ? '+' : '') + v;
+  let valuesHtml = '';
+  Object.keys(ccds).sort((a, b) => +a - +b).forEach(ccd => {
+    const label = cpuInfo && cpuInfo.VCacheCcdIndex === +ccd ? `CCD${ccd} (V-Cache)` : `CCD${ccd}`;
+    const pills = ccds[ccd].map(c => `<span class="co-pill ${pillClass(c.value)}" title="Core ${c.core}">C${c.core}: ${fmt(c.value)}</span>`).join('');
+    valuesHtml += `<div class="muted small" style="margin-top:0.4rem">${label}</div><div class="co-pills">${pills}</div>`;
+  });
+  document.getElementById('apply-confirm-summary').innerHTML =
+    `<div class="apply-summary-header"><strong>${body.mode}</strong> · ${summary}</div>${valuesHtml}`;
+  document.getElementById('apply-confirm-overlay').classList.remove('hidden');
+}
+
+async function performApply(body, alsoSaveProfile) {
+  if (alsoSaveProfile) {
+    const name = 'set-curve-optimizer-' + nowSlug();
+    const saveBody = Object.assign({}, body, { name, notes: 'Auto-saved before manual Apply' });
+    try {
+      const sr = await fetchJson('/api/profiles', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(saveBody) });
+      if (sr.ok) showToast(`📸 Saved profile "${name}"`);
+      else showToast('Profile save failed: ' + sr.error, 'error');
+    } catch (e) { showToast('Profile save failed: ' + e.message, 'error'); }
+  }
   const r = await fetchJson('/api/co', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
   if (!r.ok) { showToast('Apply failed: ' + r.error, 'error'); return; }
   if (r.data && r.data.writesStuck === false) {
@@ -208,6 +284,7 @@ async function applyCo() {
     showToast('Applied ✓');
   }
   await loadCoValues();
+  if (alsoSaveProfile) await loadProfiles();
 }
 
 async function revertCo() {
@@ -914,6 +991,19 @@ document.addEventListener('click', async e => {
   }
   switch (e.target.id) {
     case 'apply-co': applyCo(); break;
+    case 'apply-confirm-save':
+      document.getElementById('apply-confirm-overlay').classList.add('hidden');
+      if (pendingApplyBody) { const b = pendingApplyBody; pendingApplyBody = null; performApply(b, true); }
+      break;
+    case 'apply-confirm-apply':
+      document.getElementById('apply-confirm-overlay').classList.add('hidden');
+      if (pendingApplyBody) { const b = pendingApplyBody; pendingApplyBody = null; performApply(b, false); }
+      break;
+    case 'apply-confirm-cancel':
+    case 'apply-confirm-backdrop':
+      document.getElementById('apply-confirm-overlay').classList.add('hidden');
+      pendingApplyBody = null;
+      break;
     case 'revert-co': revertCo(); break;
     case 'reset-co': resetCo(); break;
     case 'start-test': startTest(); break;

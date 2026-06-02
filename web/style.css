@@ -313,6 +313,15 @@ kbd { background: var(--border); padding: 0.1rem 0.4rem; border-radius: 3px; fon
   position: relative;
 }
 .chart-box.chart-wide { grid-column: 1 / -1; }
+
+/* Apply-confirmation modal: lightweight overlay shown before writing CO
+   to the SMU. Click outside (backdrop) or Cancel to dismiss. */
+.modal-overlay { position: fixed; inset: 0; z-index: 1000; display: flex; align-items: center; justify-content: center; padding: 1rem; }
+.modal-backdrop { position: absolute; inset: 0; background: rgba(0,0,0,0.55); }
+.modal-card { position: relative; background: var(--card); border: 1px solid var(--border); border-radius: 8px; padding: 1.1rem 1.3rem; max-width: 560px; width: 100%; box-shadow: 0 18px 48px rgba(0,0,0,0.5); }
+.modal-card h3 { margin: 0 0 0.4rem; font-size: 1.05rem; }
+.apply-summary { background: rgba(255,255,255,0.03); border-left: 3px solid var(--primary); border-radius: 0 4px 4px 0; padding: 0.6rem 0.8rem; margin: 0.6rem 0 0.4rem; font-size: 0.85rem; }
+.apply-summary-header { font-size: 0.95rem; margin-bottom: 0.2rem; }
 /* Per-core charts use a wide row so the legend (16 cores) fits in one or
    two clean rows below the plot. Without extra height the legend eats
    into the plot area. */
