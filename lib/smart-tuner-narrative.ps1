@@ -38,7 +38,13 @@ function Write-TunerNarrative {
     if (Get-Command Write-Log -ErrorAction SilentlyContinue) {
         Write-Log INFO ("TUNE {0} {1}" -f $Icon, $Message)
     }
-    $entry
+    # Deliberately no return value. Earlier this function leaked $entry to
+    # the pipeline, which broke any caller that ran inside a route
+    # handler's return: Start-SmartTune fires two narrative entries during
+    # start, those bubbled up alongside the handler's @{ok=$true} hash,
+    # PowerShell returned the whole array, and the UI saw r.ok=undefined
+    # ("Start failed: undefined"). Tests that need the entry read it back
+    # via Get-NewNarrativeEntries instead.
 }
 
 function Get-NewNarrativeEntries {

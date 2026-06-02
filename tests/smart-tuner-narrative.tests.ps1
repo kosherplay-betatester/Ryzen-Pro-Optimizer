@@ -3,11 +3,13 @@ BeforeAll { . "$PSScriptRoot\..\lib\smart-tuner-narrative.ps1" }
 Describe 'Narrative buffer' {
     BeforeEach { Clear-TunerNarrative }
     It 'records an entry with auto-assigned monotonic seqId' {
-        $a = Write-TunerNarrative -Icon '⚙' -Message 'start'
-        $b = Write-TunerNarrative -Icon '➤' -Message 'probe 1'
-        $a.seqId | Should -Be 1
-        $b.seqId | Should -Be 2
-        $a.ts | Should -Not -BeNullOrEmpty
+        Write-TunerNarrative -Icon '⚙' -Message 'start'
+        Write-TunerNarrative -Icon '➤' -Message 'probe 1'
+        $entries = Get-NewNarrativeEntries -SinceSeqId 0
+        $entries.Count | Should -Be 2
+        $entries[0].seqId | Should -Be 1
+        $entries[1].seqId | Should -Be 2
+        $entries[0].ts | Should -Not -BeNullOrEmpty
     }
     It 'Get-NewNarrativeEntries returns entries with seqId > since' {
         Write-TunerNarrative -Icon '⚙' -Message 'a'
@@ -25,7 +27,9 @@ Describe 'Narrative buffer' {
         $all[-1].message | Should -Be 'm599'
     }
     It 'accepts optional structured payload' {
-        $e = Write-TunerNarrative -Icon '➤' -Message 'probe' -Payload @{ scope='CCD0'; value=-20 }
+        Write-TunerNarrative -Icon '➤' -Message 'probe' -Payload @{ scope='CCD0'; value=-20 }
+        $entries = Get-NewNarrativeEntries -SinceSeqId 0
+        $e = $entries[-1]
         $e.payload.scope | Should -Be 'CCD0'
         $e.payload.value | Should -Be -20
     }
