@@ -308,8 +308,14 @@ kbd { background: var(--border); padding: 0.1rem 0.4rem; border-radius: 3px; fon
   background: rgba(0,0,0,0.18);
   border: 1px solid var(--border);
   border-radius: 6px;
-  padding: 0.7rem 0.8rem 0.6rem;
-  min-height: 240px;
+  /* Top padding holds the absolutely-positioned title; canvas fills the
+     entire content area below it. Without this trick Chart.js sizes the
+     canvas to parent.clientHeight (ignoring the title sibling), the
+     canvas overshoots the chart-box by ~title_height, and the legend at
+     the bottom of the canvas ends up outside the box where the next
+     chart-box paints over it - so legend clicks never reach the canvas. */
+  padding: 30px 0.8rem 0.6rem;
+  height: 280px;
   position: relative;
 }
 .chart-box.chart-wide { grid-column: 1 / -1; }
@@ -350,21 +356,26 @@ kbd { background: var(--border); padding: 0.1rem 0.4rem; border-radius: 3px; fon
 /* Per-core charts use a wide row so the legend (16 cores) fits in one or
    two clean rows below the plot. Without extra height the legend eats
    into the plot area. */
-.chart-box.chart-with-legend { min-height: 280px; }
-.chart-box.chart-with-legend canvas { height: 240px !important; }
+.chart-box.chart-with-legend { height: 360px; }
 .chart-title {
+  position: absolute;
+  top: 0.7rem; left: 0.8rem; right: 0.8rem;
   font-size: 0.78rem;
   color: var(--muted);
   text-transform: uppercase;
   letter-spacing: 0.05em;
-  margin-bottom: 0.5rem;
   display: flex;
   justify-content: space-between;
   align-items: center;
+  pointer-events: none;
+  z-index: 2;
 }
+/* Canvas fills chart-box content area exactly (after the top padding
+   that reserves space for the absolutely-positioned title). No height
+   override: Chart.js sets canvas.style.height = parent.clientHeight, and
+   that matches what the browser actually renders. */
 .chart-box canvas {
   width: 100% !important;
-  height: 200px !important;
   display: block;
 }
 .chart-title .chart-hint {

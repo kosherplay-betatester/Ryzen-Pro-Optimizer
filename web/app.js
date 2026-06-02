@@ -582,6 +582,7 @@ const ProDash = (() => {
         responsive: true,
         maintainAspectRatio: false,
         interaction: { mode: 'nearest', intersect: false },
+        layout: { padding: { top: 8 } },
         plugins: {
           legend: { display: !!opts.legend, position: 'bottom', align: 'start',
                     labels: { color: '#8b95a8', boxWidth: 10, font: { size: 10 }, padding: 6, usePointStyle: false },
