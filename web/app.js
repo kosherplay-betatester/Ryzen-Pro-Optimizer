@@ -77,6 +77,19 @@ function summarizeCo(arr) {
   return arr.join(', ');
 }
 
+async function loadVersion() {
+  try {
+    const r = await fetchJson('/api/version');
+    if (r && r.ok && r.data) {
+      const el = document.getElementById('app-version');
+      if (el) {
+        el.textContent = 'v' + r.data.version;
+        el.title = 'Installed at ' + (r.data.installDir || 'unknown');
+      }
+    }
+  } catch (_) { /* footer just stays "v—" if the call fails */ }
+}
+
 async function loadCpu() {
   const j = await fetchJson('/api/cpu');
   cpuInfo = j.data;
@@ -1506,6 +1519,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     applySettingsToUI();
     saveSettings();  // push current preferences to server on load
+    await loadVersion();
     await loadCpu();
     await loadCoValues();
     await loadProfiles();

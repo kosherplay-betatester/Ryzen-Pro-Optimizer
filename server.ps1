@@ -28,6 +28,10 @@
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
+# App version. Bumped manually per release; surfaced via /api/version
+# and shown in the UI footer. Keep in sync with CHANGELOG.md.
+$script:AppVersion = '0.6.0'
+
 # Project root
 $RepoRoot = $PSScriptRoot
 
@@ -522,6 +526,15 @@ Register-Route -Method POST -Path '/api/heartbeat' -Handler {
 Register-Route -Method POST -Path '/api/shutdown' -Handler {
     Invoke-GracefulShutdown
     @{ ok = $true; data = @{ shuttingDown = $true } }
+}
+
+# Surface the app version (and the install path so users debugging
+# multiple clones can confirm which one the browser is talking to).
+Register-Route -Method GET -Path '/api/version' -Handler {
+    @{ ok = $true; data = @{
+        version    = $script:AppVersion
+        installDir = $PSScriptRoot
+    } }
 }
 
 Register-Route -Method POST -Path '/api/settings' -Handler {

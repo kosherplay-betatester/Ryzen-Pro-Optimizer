@@ -1,10 +1,27 @@
 # Ryzen Pro Optimizer
 
+**Current version: 0.6.0** — see [CHANGELOG.md](CHANGELOG.md) for full release notes.
+
 A friendly, local web-based UI for tuning AMD Ryzen **Curve Optimizer** offsets — sets per-core CO values from Windows (no BIOS reboot), runs stress tests via [CoreCycler](https://github.com/sp00n/corecycler), parses logs into a clean pass/fail report with smart next-step suggestions, and shows live CPU telemetry the whole time.
 
-Now ships with a **Pro Dashboard** (live charts, V/F scatter, per-core heatmap, history export), a **Safety Guard** that hard-aborts stress tests on temp/voltage/WHEA breaches, a **panic-revert breadcrumb** that survives BSODs so the next boot can roll back to safe values automatically, a **Smart Auto-Adjust** bisection-based tuner with five goal modes + V-Cache awareness + cross-session learning, a **Tune Theater** live narrative UI that shows every step the algorithm takes, an opt-in **startup disclaimer** that walks the user through the risks of CPU undervolting, and a **first-run BIOS-setup helper** that auto-detects when PBO/CO isn't enabled in BIOS and shows per-vendor menu paths.
+Now ships with a **Pro Dashboard** (live charts, V/F scatter, per-core heatmap, history export), a **Safety Guard** that hard-aborts stress tests on temp/voltage/WHEA breaches, a **panic-revert breadcrumb** that survives BSODs so the next boot can roll back to safe values automatically, a **Smart Auto-Adjust** bisection-based tuner with five goal modes + V-Cache awareness + cross-session learning, a **Tune Theater** live narrative UI that shows every step the algorithm takes, an opt-in **startup disclaimer** that walks the user through the risks of CPU undervolting, a **first-run BIOS-setup helper** that auto-detects when PBO/CO isn't enabled in BIOS and shows per-vendor menu paths, and (new in 0.6.0) a **Live Curve Optimizer panel** that reads the SMU every 3 seconds during a tune so you can watch the chip's actual values change in real time.
 
 Think of it as a free, open, transparent, manual-by-default alternative to Hydra — built on top of CoreCycler so the proven stress-test machinery is doing the heavy lifting, while we focus on the UX, safety, and live visibility layer most users actually need.
+
+---
+
+## What's new in 0.6.0 (highlights)
+
+- **Live Curve Optimizer panel** — appears during any tune; reads the SMU every 3 s; three views (Summary / Per-CCD / Per-core). Watch Auto-Adjust walk individual cores and Smart Tune step CCD0 / CCD1 in unison during phase A then diverge during phase B.
+- **Pre-tune profile snapshots** — every Auto-Adjust and Smart Auto-Adjust run auto-saves the current CO as a regular profile (`pre-auto-adjust-…` / `pre-smart-tune-…`) before starting. One-click rollback from the Profiles list if the tune lands somewhere worse than you started.
+- **Apply confirmation modal** — clicking Apply now shows a per-CCD breakdown of the offsets and offers an inline "Save profile & apply" that snapshots as `set-curve-optimizer-<ts>` first.
+- **Profile Details preview** — inline expansion shows mode, CPU, core/CCD count, saved date, notes, summary, and per-core CO pills before you Load/Apply.
+- **Three-state legend filter** on Pro Dashboard per-core charts — click to toggle, shift+click to solo.
+- **HTML chart tooltip** — no longer clipped by the canvas; the 16-row per-core tooltip now flows freely with viewport-edge-flipping.
+- **Full code audit batch** — four tiers of fixes covering stored XSS, Process handle leaks, Windows reserved profile names, snapshot collision safety, state-machine REPORTING→TESTING, Smart Tune resume `scopeState` preservation, phase-B parent-CCD seeding, history CPU fuzzy match, frontend race conditions (Esc handler, poll stacking, double-Apply), `Save-TuneSession` crash hardening, full LHM DLL completeness check, path-traversal canonicalization, idempotent shutdown, log-parser regex tightening, mobile/APU CPU detection, `Inspect-SafetySnapshot` defensive harden, and more.
+- **Resolved: "Start failed: undefined"** toast — root caused to a pipeline leak in `Write-TunerNarrative`. The tune was actually starting all along; the UI was just reading a JSON array instead of an object.
+
+Full release notes including the v0.5.0 smoke-test fix batch and earlier versions in [CHANGELOG.md](CHANGELOG.md).
 
 ---
 
@@ -54,7 +71,7 @@ Under the hood:
 - **Safety-margin locking** — the final committed value is always shifted *away* from the discovered edge by the mode's margin (e.g., Daily Driver locks at edge+2 toward zero). Never the absolute edge.
 - **Single-iteration probe loop** driven by `/api/status` ticks, so the HTTP server stays responsive between Prime95 runs.
 
-Per the design spec at [`docs/superpowers/specs/2026-05-28-smart-auto-adjust-design.md`](docs/superpowers/specs/2026-05-28-smart-auto-adjust-design.md). 84 Pester unit tests cover the search engine, history queries, mode policies, narrative buffer, probe classifier, and orchestrator state machine.
+Per the design spec at [`docs/superpowers/specs/2026-05-28-smart-auto-adjust-design.md`](docs/superpowers/specs/2026-05-28-smart-auto-adjust-design.md). 88 Pester unit tests cover the search engine, history queries, mode policies, narrative buffer, probe classifier, profile store (incl. pre-tune snapshots), and orchestrator state machine.
 
 ### ▣ Tune Theater
 The transparency layer for Smart Auto-Adjust runs. Auto-opens above the Pro Dashboard when a Smart Tune starts. Shows:
@@ -410,6 +427,7 @@ All endpoints are JSON. Bound to `127.0.0.1` only.
 | Method | Path | Purpose |
 |---|---|---|
 | GET | `/api/ping` | Liveness check |
+| GET | `/api/version` | App version + install dir (footer link) |
 | GET | `/api/cpu` | Detected CPU info (name, cores, CCDs, V-Cache, CO support) |
 | GET | `/api/co/current` | Live CO values from SMU |
 | GET | `/api/co/launch` | The snapshot captured when the server started |
@@ -491,16 +509,24 @@ Server log lives at `runtime/server.log` (rotates at 5 MB).
 
 ## Roadmap
 
-Shipped in the current build (see [`docs/superpowers/specs/`](docs/superpowers/specs/) and [`docs/superpowers/plans/`](docs/superpowers/plans/) for the design + execution records):
+Shipped in the current build (see [`docs/superpowers/specs/`](docs/superpowers/specs/) and [`docs/superpowers/plans/`](docs/superpowers/plans/) for the design + execution records, and [CHANGELOG.md](CHANGELOG.md) for the per-version log):
 - ✓ Pro Dashboard with Chart.js live charts, V/F scatter, per-core heatmap, history export
-- ✓ Safety Guard with hysteresis, hard-abort, auto-revert to launch snapshot on trip
+- ✓ Per-core chart legend with three-state filter (click toggle · shift+click solo) + HTML tooltip that escapes the canvas
+- ✓ Safety Guard with hysteresis, hard-abort, auto-revert to launch snapshot on trip; defensive try/catch around `Inspect-SafetySnapshot` so a bad tick can't 500 `/api/status`
 - ✓ Panic-revert breadcrumb surviving BSODs
-- ✓ Startup risk disclaimer with versioned acceptance
-- ✓ Smart Auto-Adjust orchestrator + five goal modes + V-Cache CCD asymmetry handling
+- ✓ Startup risk disclaimer with versioned acceptance (opt-in to suppress)
+- ✓ Smart Auto-Adjust orchestrator + five goal modes + V-Cache CCD asymmetry handling + per-mode granularity transparency in the UI (per-CCD vs per-CCD+per-core surfaced in the dropdown labels)
 - ✓ Tune Theater live narrative UI with seqId-paginated state stream
-- ✓ Cross-session history learning + crash-as-data-point recording
-- ✓ Resume-SmartTune for interrupted sessions
+- ✓ Cross-session history learning + crash-as-data-point recording + CPU model fuzzy match (trim + lowercase) so microcode-revision differences don't break history seeding
+- ✓ Resume-SmartTune for interrupted sessions, with `scopeState` preserved for LOCKED scopes and phase-B per-core scopes seeded from their parent CCD's locked value
 - ✓ Write-verify on every CO apply + auto-detected first-run BIOS-setup card
+- ✓ Live Curve Optimizer panel during tunes (Summary / Per-CCD / Per-core)
+- ✓ Pre-tune profile snapshots (Auto-Adjust + Smart Auto-Adjust) with millisecond-precision filenames to prevent same-second collision
+- ✓ Apply confirmation modal with inline "Save profile & apply" option
+- ✓ Profile Details inline-expand preview with per-core CO pill chips
+- ✓ Stored-XSS escaping at every server-string interpolation site (audit batch)
+- ✓ Process handle disposal + path traversal canonicalization + idempotent shutdown + double-arm guard + state-machine REPORTING→TESTING (audit batch)
+- ✓ App version surfaced in the UI footer + `/api/version` endpoint
 
 Next up:
 - **AVX2 / AVX-512 stress matrix in Max Stable mode** — currently the orchestrator only invokes Prime95 SSE; Max Stable would benefit from a multi-workload cross-check pass after the bisection converges.

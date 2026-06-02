@@ -1,0 +1,303 @@
+# Changelog
+
+All notable changes to Ryzen Pro Optimizer.
+
+The format is loosely [Keep a Changelog](https://keepachangelog.com/en/1.1.0/);
+versions follow semantic intent (major.minor.patch) but the project hasn't
+hit 1.0 yet — see the roadmap in [README.md](README.md#roadmap).
+
+---
+
+## [0.6.0] — 2026-06-02 · "Audit-hardened"
+
+A long iteration day driven by a real-hardware smoke test on a 7950X3D,
+followed by a multi-agent code audit and four batched fix tiers.
+
+### New
+
+- **Live Curve Optimizer panel.** Shows the SMU's actual current per-core
+  CO values during a tune, refreshed every 3 s via `/api/co/current`.
+  Visible only while state == TESTING. Three view tabs: Summary
+  (one-line synopsis), Per-CCD (one row per CCD), Per-core (pill chips
+  grouped by CCD with negative/zero/positive color coding). Auto-Adjust
+  and Smart Tune writes are now visible in real time as the tuner walks
+  through cores.
+- **Pre-tune profile snapshots.** Before any Auto-Adjust or Smart
+  Auto-Adjust run, the current CO is automatically saved as a regular
+  profile named `pre-auto-adjust-<ts>` / `pre-smart-tune-<ts>`. Visible
+  in the Profiles list; load-and-apply at any time to roll back. Filename
+  uses millisecond precision so rapid double-starts don't overwrite the
+  original baseline.
+- **Apply confirmation modal.** Clicking Apply now opens a modal showing
+  the per-CCD breakdown of the offsets being written, with three buttons:
+  📸 Save profile & apply (auto-saves as `set-curve-optimizer-<ts>`),
+  Apply only (write without saving), or Cancel.
+- **Profile Details button.** Inline expansion below each profile row
+  shows mode, CPU model, core/CCD count, saved date, notes, summary, and
+  per-core CO values as pill chips. Lets you preview before Load/Apply.
+- **Granularity transparency.** Smart Auto-Adjust Goal Mode dropdown now
+  labels each option's tuning granularity ("per-CCD" vs "per-CCD +
+  per-core"), and a new info-box explains what each mode does and what
+  per-CCD vs per-core means. Auto-Adjust info-box gains a "per-core
+  tuning" badge.
+- **Three-state legend filter on Pro Dashboard charts.** Click a core in
+  a per-core chart legend to toggle its visibility; shift+click to
+  solo it (hide all others); shift+click the solo'd item to restore
+  all. Small hint string next to each chart title for discoverability.
+- **HTML chart tooltip.** Tooltips render as a `<div>` on `document.body`
+  with `pointer-events: none` and viewport-edge-flipping, so the
+  16-row per-core tooltip is no longer clipped by the canvas.
+- **App version surfaced in the UI footer.** New `/api/version`
+  endpoint; footer shows `v0.6.0` with a link to this CHANGELOG.
+
+### Fixed
+
+- **"Start failed: undefined" toast.** Root cause: `Write-TunerNarrative`
+  ended with `$entry` as its last expression, leaking the record onto
+  the pipeline. `Start-SmartTune` calls it twice during start; those
+  entries bubbled up alongside the handler's `@{ok=$true; data=...}`
+  hashtable, PowerShell collected them into a 3-element array, JSON
+  serialized as array, frontend read `r.ok` on array → `undefined`,
+  toast fired despite the tune actually starting successfully. Fixed by
+  no longer returning `$entry`.
+- **Legend clicks not registering on per-core charts.** Two layout root
+  causes: (1) `canvas.height` attribute (Chart.js's logical space) =
+  266 while CSS forced canvas to 240, so legend hit boxes recorded at
+  y=246 fell outside the displayed canvas; (2) Chart.js sized the
+  canvas to fill `parent.clientHeight` without accounting for the
+  `.chart-title` sibling, so the canvas overshot the chart-box bottom
+  and `elementFromPoint` at the legend position returned the parent
+  grid, not the canvas. Fixed by absolute-positioning the title (out
+  of normal flow), removing the `!important` canvas height override,
+  and giving the chart-box explicit dimensions.
+- **`Inspect-SafetySnapshot` 500s on `/api/status`.** Real-hardware
+  session hit `[System.ArgumentException] Argument types do not match`
+  inside the safety inspector. The most plausible trigger is overload
+  resolution on `[Math]::Max(0, PSObject)` — PowerShell can wrap
+  hashtable values in `PSObject` and the int/PSObject pair doesn't
+  exact-match any `Math::Max` overload. Replaced with explicit `[int]`
+  coercion and plain comparison. Also wrapped the whole inspection in
+  try/catch so a transient snapshot issue degrades to no-op for one
+  tick instead of 500'ing the polling endpoint.
+
+### Audit-batch fixes (multi-agent code review, 4 tiers)
+
+**Tier 1 — critical security and reliability:**
+
+- Stored XSS escaping at 11 sites via new `escHtml()` helper: profile
+  name/cpuModel/notes in `loadProfiles` + `toggleProfileDetails`
+  (widened by the new Details panel), narrative `e.message` /
+  `e.icon`, panic-revert `p.reason`, pending-session `p.mode` /
+  `p.status`, `smartSuggestions`, `cpuInfo.Name`, report's failed-cores
+  table, safety banner violations and `lastEvent`, theater scope id
+  and "currently" strip.
+- `Process` handle leak in `Get-AllCoreCo` / `Set-AllCoreCo` on the
+  5-second timeout path: `Kill()` + `throw` skipped `Dispose()`. Now
+  wrapped in try/finally so Dispose always runs.
+- `Get-SafeProfileName` blocks Windows reserved device names
+  (NUL/CON/PRN/AUX/COM1-9/LPT1-9). A profile named "NUL" silently
+  wrote to the null device, data lost, `Get-Content` hung forever.
+  Also strips trailing dots/spaces (Win32 API silently truncates,
+  producing files that can't be deleted) and caps basename length.
+- `ConvertTo-CoreArray` per-core mode now throws on missing keys
+  instead of silently coercing to 0. A 16-core profile applied to a
+  24-core CPU used to write CO=0 to cores 16–23 without warning.
+
+**Tier 2 — high-impact correctness:**
+
+- `$ValidTransitions['REPORTING']` now allows TESTING and
+  APPLYING_CO. `/api/test/start` and `/api/smart-tune/start` both
+  accept REPORTING as a valid starting state but the state machine
+  used to throw "Invalid state transition" on the second back-to-back
+  run from REPORTING.
+- `Resume-SmartTune` carries `scopeState` forward for LOCKED/FAILED
+  scopes. Previously dropped, so resumed scopes showed
+  `probesCompleted=0` and phase-B per-core scopes had no parent CCD
+  state to seed from.
+- Phase-B per-core scopes seed from parent CCD's locked value
+  (`SeedValue` + `KnownStableHint`) instead of cold-starting at 0.
+  Burned probe budget walking through territory already proven stable.
+- History CPU model comparison now normalizes (trim + collapse
+  whitespace + lowercase) on both sides. Microcode-revision or stray
+  whitespace differences between sessions used to silently produce no
+  history hint and restart cold.
+- `pollStatus` guarded by in-flight flag; `loadReport()` debounced to
+  the transition into REPORTING. Previously the polling loop stacked
+  on slow servers and `loadReport()` re-fetched + reset the report
+  card's scroll position once per second while in REPORTING.
+- Esc handler stops the active test/Smart Tune before resetting CO,
+  and closes the apply-confirmation modal if open. Was silently
+  writing zeros mid-run while the test kept going as if nothing
+  happened.
+- Double-Apply race guarded by `applyInFlight` flag at both entry
+  points (form Apply modal + profile-list Apply button).
+
+**Tier 3 — defensive correctness:**
+
+- `Save-TuneSession` wrapped in try/catch. A `Set-Content` failure
+  used to propagate as a terminating error and crash `Step-SmartTune`
+  mid-probe, dropping all in-memory state. Best-effort + WARN log.
+- `Test-LhmInstalled` checks every DLL in the pinned NuGet recipe,
+  not just the main one. A partial install (NuGet 404, AV quarantine)
+  left vendor/ with a subset of the 6-DLL stack, the next launch
+  skipped repair, and LHM `Open()` crashed at runtime with
+  `TypeLoadException`.
+- Startup panic-revert / pending-session parse `catch {}` now logs +
+  removes the corrupt file. A truncated recovery file silently
+  disabled the very prompt it existed to enable.
+
+**Tier 4 — defensive cleanup:**
+
+- Path traversal canonicalization in `lib/http-server.ps1`. The
+  `\.\.` regex caught the common case but missed absolute-path
+  injection: `/C:/Windows/...` after `TrimStart('/')` became
+  `"C:/Windows/..."` and `Join-Path` silently returned the right-hand
+  absolute path, escaping `$WebRoot` entirely. Now
+  `[IO.Path]::GetFullPath` both sides + `StartsWith` verification.
+- `Invoke-GracefulShutdown` idempotent — `$script:ShutdownRequested`
+  set at the top with an early-return. The tick callback fires from
+  two places, so a rapid request burst overlapping a heartbeat
+  timeout could double-invoke CO revert + `Stop-CoreCyclerRun`.
+- `Enable-SafetyGuard` double-arm guard: warns + calls
+  `Disable-SafetyGuard` first if already active, instead of silently
+  overwriting `OnAbort`.
+- `Set-CurrentState` same-state self-transition logged at DEBUG so a
+  double-start race is at least findable in `server.log`.
+- `log-parser.ps1` regex tightened: `core .* errored` →
+  `\bcore \d+ (has )?errored\b`. The old pattern could match
+  informational lines like "checking if core 4 has errored (none
+  found)" and produce a false FAILED verdict on a passing run.
+- `cpu-detect.ps1` heuristic now recognizes mobile/APU H/U/HS/HX
+  suffixes as monolithic single-CCD (Cezanne 5800H, Phoenix 7840HS,
+  Hawk Point 8945HS). The fallback `cores > 8 → dual-CCD` previously
+  misclassified them.
+- `help.html` `innerHTML` now goes through `DOMParser` with
+  `<script>` / `on*=` / `javascript:` stripped. Habit defense even
+  though the file is local-only.
+- `ProDash.hide()` also hides `#chartjs-html-tooltip` so the orphan
+  element doesn't sit on `document.body` at opacity 0 forever.
+
+### Verified non-bugs (called out by the audit, kept as-is)
+
+- `Test-CoWritesStuck`'s `stuck` flag is consistent end-to-end with
+  the frontend's `writesStuck` handling. Variable name is misleading
+  ("stuck" = "register stuck to wanted value"), logic is correct.
+- `corecycler-runner.ps1` `stopOnError = if (X) { 0 } else { 0 }`
+  looks like a paste error but the runtime is intentional: manual
+  mode uses `skipOnError=1` to continue testing remaining cores,
+  auto-adjust mode keeps re-testing failed cores after CO bump.
+- WHEA baseline captures queue size at arm time; post-arm arrivals
+  trigger the delta. Working as designed.
+- `Get-LockInValue` overclock margin collapsing `knownStable=1 → 0`
+  is consistent with the existing undervolt test contract; intentional
+  conservative safety when stable is shallower than the margin.
+
+### Process
+
+- `bbeta_sandbox`-shaped dev/sandbox split (edits in dev clone, runtime
+  state in `_beta_sandbox`). Live debug session for the legend-click
+  fix used Chrome DevTools MCP to identify the canvas dimension
+  mismatch root cause.
+- 5 parallel code-review agents over PowerShell server, Smart Tune
+  engine, safety/CoreCycler/CO, frontend, and persistence/installer.
+
+### Tests
+
+88/88 Pester green throughout the day. Four new tests for
+`Save-PreTuneSnapshot` (filename format, mode, round-trip through
+`Get-ProfileList`, invalid-process rejection).
+
+---
+
+## [0.5.0] — 2026-06-01 · "Smart Auto-Adjust on a real bench"
+
+First real-hardware smoke test on a 7950X3D. Five bugs the 84-test
+Pester suite missed, all shipped:
+
+- `b1b2abf` — `lib/http-server.ps1` logs exception type + route + stack
+  on handler error (diagnostic).
+- `79877b3` — Smart Tune: capture `$script:Tune` locally before
+  `.GetNewClosure()`. Closures created inside a dynamically-invoked
+  route handler don't inherit `$script:` scope, so `$script:Tune.Scopes`
+  was `$null` inside `$applyFn` even though `Step-SmartTune` saw it.
+- `f82b3cf` — `lib/http-server.ps1` rebuilds the `HttpListener` on each
+  port attempt. `Start()` failure nulls the `.Prefixes` collection, so
+  retrying with the same instance crashed.
+- `ed3dc22` — `/api/status` skips the TESTING→REPORTING auto-transition
+  while Smart Tune is running. Smart Tune spawns one CoreCycler per
+  probe and the server is idle between, so the auto-transition tripped
+  within 1s of starting and disarmed the Safety Guard mid-tune.
+- `7f9bb73` — `Invoke-Probe`: wrap `Get-Content` so 0/1-line logs bind
+  to `[string[]]`. Used to fail with "Cannot bind argument to parameter
+  'LogLines' because it is an empty string" whenever a probe exited
+  fast.
+- `02f30c8` — installer enforces TLS 1.2 before any web call. Windows
+  PowerShell 5.1 inherits the system's default; on un-patched hosts
+  this can still be Tls10/11, both of which GitHub and NuGet refuse.
+
+---
+
+## [0.4.0] — 2026-05-28 → 31 · "Smart Auto-Adjust"
+
+A bisection-based, telemetry-aware, history-learning auto-tuner with
+five user-selectable goal modes (Daily Driver, Max Stable, Adaptive,
+Characterize, Overclock). Smart Tune narratives stream live via a
+seqId-paginated narrative log. Crash-recovery resume from
+`runtime/tuner-session.json`. Append-only per-CPU history ledger that
+seeds future sessions and permanently records crash data points as
+guard rails. V-Cache CCD tighter bounds + probe-first ordering. Safety
+margin locked-in values shifted away from the discovered edge by the
+mode's `marginPoints`. Tune Theater UI: progress header, "currently"
+strip, per-scope bisection ladder cards, live narrative log with
+icons.
+
+84 Pester unit tests covering the search engine, history queries,
+mode policies, narrative buffer, and orchestrator state machine.
+
+---
+
+## [0.3.0] — earlier · "Pro Dashboard + Safety Guard + BIOS helper"
+
+- Pro Dashboard with Chart.js live charts: per-core clock, temperature
+  (Pkg + CCD), per-core voltage, package power, V/F scatter, stats
+  grid, per-core heatmap, history export.
+- Safety Guard with hysteresis (3 consecutive breach samples before
+  abort), hard-abort on temp/voltage/WHEA, abort callback that stops
+  the test + steps every core back one increment toward neutral.
+- Panic-revert breadcrumb survives BSODs: written before every CO
+  write, deleted after success; presence on next boot signals
+  "previous session crashed."
+- Startup risk disclaimer with versioned acceptance in localStorage.
+- First-run BIOS-setup helper: read-back verification of every CO
+  write detects SMU-ignored writes (PBO/CO disabled in BIOS) and shows
+  a per-vendor (ASUS/MSI/Gigabyte/ASRock + Generic) tabbed help card
+  with menu paths.
+
+---
+
+## [0.2.0] — earlier · "Test runner + reports"
+
+- CoreCycler integration with selectable Prime95 mode (SSE / AVX2 /
+  AVX-512).
+- Auto-Adjust mode that walks per-core CO toward each core's stable
+  edge.
+- Log parser turning CoreCycler + Prime95 logs into a pass/fail
+  report with per-core failure breakdown.
+- Smart Suggestions: context-aware next-step recommendations based on
+  which cores failed and how.
+- Peak tracking during tests for thermal sanity-checking.
+
+---
+
+## [0.1.0] — initial · "CO read/write from Windows"
+
+- PowerShell HTTP server bound to `127.0.0.1`.
+- ryzen-smu-cli wrapper for SMU register read/write via PawnIO.
+- Vanilla JS + Chart.js UI: three modes (all-cores / per-CCD /
+  per-core), profile save/load, panic-Esc reset.
+- LibreHardwareMonitorLib live telemetry (Pkg temp / power / per-core
+  V / clock / load), CCD-aware grouping, V-Cache CCD detection.
+- WHEA Bodyguard: Event-Log subscription for hardware corrected-error
+  detection.
+- 6-state state machine: IDLE → APPLYING_CO → TESTING → STOPPING →
+  REPORTING → IDLE (plus ERROR).

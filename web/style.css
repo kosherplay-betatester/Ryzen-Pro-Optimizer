@@ -156,6 +156,12 @@ h3 { font-size: 0.9rem; margin: 1rem 0 0.4rem; color: var(--text); }
 .live-co-tab:hover { color: var(--text); }
 .live-co-tab.active { background: var(--primary); color: white; border-color: var(--primary); }
 
+/* Footer version line */
+.footer-version { margin-top: 0.4rem; font-size: 0.7rem; color: var(--muted); opacity: 0.7; }
+.footer-version a { color: var(--muted); text-decoration: none; }
+.footer-version a:hover { color: var(--accent); text-decoration: underline; }
+#app-version { font-family: ui-monospace, Consolas, monospace; }
+
 /* Bodyguard indicator */
 .setting-row { display: flex; gap: 0.6rem; align-items: flex-start; margin: 0.6rem 0; padding: 0.5rem; border-radius: 4px; cursor: pointer; }
 .setting-row:hover { background: rgba(255,255,255,0.03); }
