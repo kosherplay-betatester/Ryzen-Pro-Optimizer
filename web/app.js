@@ -52,6 +52,17 @@ function showToast(msg, kind) {
   setTimeout(() => t.remove(), 3000);
 }
 
+// Escape server- or user-sourced strings before they go into `innerHTML`
+// template literals. Profile names, notes, narrative messages, panic
+// reasons, and CoreCycler error-type strings all flow through here. The
+// threat model is single-trusted-user on localhost, but a corrupted or
+// migrated profile JSON could carry `<img src=x onerror=...>` payloads,
+// and the profile list re-renders on every Apply/Save/page-load.
+function escHtml(s) {
+  if (s == null) return '';
+  return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+
 function summarizeCo(arr) {
   if (!arr || !arr.length) return '—';
   const allSame = arr.every(v => v === arr[0]);
@@ -84,7 +95,7 @@ async function loadCpu() {
   const ccdDesc = cpuInfo.IsDualCcd
     ? `${cpuInfo.CcdCount} CCDs${cpuInfo.VCacheCcdIndex !== null ? ' · CCD' + cpuInfo.VCacheCcdIndex + ' has 3D V-Cache' : ''}`
     : '1 CCD';
-  card.innerHTML = `<strong>${cpuInfo.Name}</strong> · ${cpuInfo.Cores} cores · ${ccdDesc} · Zen ${cpuInfo.ZenGen}`;
+  card.innerHTML = `<strong>${escHtml(cpuInfo.Name)}</strong> · ${cpuInfo.Cores} cores · ${ccdDesc} · Zen ${escHtml(cpuInfo.ZenGen)}`;
 
   document.getElementById('curve-card').classList.remove('hidden');
   document.getElementById('test-card').classList.remove('hidden');
@@ -355,12 +366,12 @@ async function loadReport() {
   const d = r.data;
   const verdictClass = d.verdict === 'PASSED' ? 'verdict-pass' : (d.verdict === 'INCOMPLETE' ? 'verdict-incomplete' : 'verdict-fail');
   const verdictIcon = d.verdict === 'PASSED' ? '✅' : (d.verdict === 'INCOMPLETE' ? '⏱' : '❌');
-  let html = `<div class="${verdictClass}">${verdictIcon} ${d.verdict}</div>`;
-  html += `<p>Duration: ${d.duration || '?'} · Iterations: ${d.iterationsCompleted}/${d.iterationsRequested} · Cores tested: ${(d.coresTested || []).length}</p>`;
+  let html = `<div class="${verdictClass}">${verdictIcon} ${escHtml(d.verdict)}</div>`;
+  html += `<p>Duration: ${escHtml(d.duration || '?')} · Iterations: ${d.iterationsCompleted}/${d.iterationsRequested} · Cores tested: ${(d.coresTested || []).length}</p>`;
 
   if (d.coresFailed && d.coresFailed.length) {
     html += '<h3>Failed cores</h3><table class="report-tbl"><tr><th>Core</th><th>CCD</th><th>CO at failure</th><th>Type</th></tr>';
-    d.coresFailed.forEach(c => html += `<tr><td>${c.core}</td><td>${c.ccdLabel}</td><td>${c.coAtFailure ?? '?'}</td><td>${c.errorType}</td></tr>`);
+    d.coresFailed.forEach(c => html += `<tr><td>${c.core}</td><td>${escHtml(c.ccdLabel)}</td><td>${c.coAtFailure ?? '?'}</td><td>${escHtml(c.errorType)}</td></tr>`);
     html += '</table>';
   } else if (d.verdict === 'PASSED') {
     html += '<p class="muted">All cores passed with flying colors. 🎉</p>';
@@ -368,7 +379,7 @@ async function loadReport() {
 
   if (d.smartSuggestions && d.smartSuggestions.length) {
     html += '<h3>💡 Smart Suggestions</h3><ul>';
-    d.smartSuggestions.forEach(s => html += `<li>${s}</li>`);
+    d.smartSuggestions.forEach(s => html += `<li>${escHtml(s)}</li>`);
     html += '</ul>';
   }
 
@@ -955,14 +966,14 @@ function renderSafetyBanner(s) {
   if (sg.lastAbort) cls = 'alert';
   else if (sg.lastWarning) cls = 'warn';
   if (cls) el.classList.add(cls);
-  const violations = (sg.violations || []).map(v => `<span><strong>${v.metric}</strong> ${v.value.toFixed(2)} ≥ ${v.limit}</span>`).join(' ');
+  const violations = (sg.violations || []).map(v => `<span><strong>${escHtml(v.metric)}</strong> ${v.value.toFixed(2)} ≥ ${v.limit}</span>`).join(' ');
   el.innerHTML = `<h3>🛡 Safety Guard — auto-tune watchdog</h3>
     <div class="safety-line">
       <span>Limits: <strong>${sg.maxTempC}°C</strong> · <strong>${sg.maxVid.toFixed(2)}V</strong> · WHEA-abort <strong>${sg.abortOnWhea ? 'ON' : 'off'}</strong></span>
       <span>Aborts: <strong>${sg.abortCount}</strong> · step-backs: <strong>${sg.stepBackCount}</strong></span>
     </div>
     ${violations ? `<div class="safety-line" style="margin-top:0.4rem">Active: ${violations}</div>` : ''}
-    ${sg.lastEvent ? `<div class="muted small" style="margin-top:0.3rem">Last: ${sg.lastEvent}</div>` : ''}`;
+    ${sg.lastEvent ? `<div class="muted small" style="margin-top:0.3rem">Last: ${escHtml(sg.lastEvent)}</div>` : ''}`;
   if (sg.newAbort) playSafetyBeep();
 }
 
@@ -977,7 +988,7 @@ async function loadProfiles() {
       return `
       <div class="profile-row">
         <div class="profile">
-          <span class="grow"><strong>${p.name}</strong> <span class="muted small">· ${p.mode} · ${p.cpuModel || ''}${p.notes ? ' · ' + p.notes : ''}</span></span>
+          <span class="grow"><strong>${escHtml(p.name)}</strong> <span class="muted small">· ${escHtml(p.mode)} · ${escHtml(p.cpuModel || '')}${p.notes ? ' · ' + escHtml(p.notes) : ''}</span></span>
           <button data-details="${enc}" class="secondary" title="Preview the saved settings">Details</button>
           <button data-load="${enc}" class="secondary" title="Load into form (no apply)">Load</button>
           <button data-apply="${enc}" class="primary" title="Apply immediately">Apply</button>
@@ -1018,13 +1029,13 @@ function toggleProfileDetails(profileName) {
   const summary = summarizeCo(arr);
   el.innerHTML = `
     <div class="details-grid">
-      <div><span class="muted small">Mode:</span> <strong>${p.mode}</strong></div>
-      <div><span class="muted small">CPU:</span> ${p.cpuModel || '?'}</div>
+      <div><span class="muted small">Mode:</span> <strong>${escHtml(p.mode)}</strong></div>
+      <div><span class="muted small">CPU:</span> ${escHtml(p.cpuModel || '?')}</div>
       <div><span class="muted small">Cores:</span> ${p.coreCount || arr.length || '?'}</div>
       <div><span class="muted small">CCDs:</span> ${p.ccdCount || '?'}</div>
-      <div><span class="muted small">Saved:</span> ${created}</div>
-      <div><span class="muted small">Summary:</span> ${summary}</div>
-      ${p.notes ? `<div class="details-notes"><span class="muted small">Notes:</span> ${p.notes}</div>` : ''}
+      <div><span class="muted small">Saved:</span> ${escHtml(created)}</div>
+      <div><span class="muted small">Summary:</span> ${escHtml(summary)}</div>
+      ${p.notes ? `<div class="details-notes"><span class="muted small">Notes:</span> ${escHtml(p.notes)}</div>` : ''}
     </div>
     <div class="details-values">
       <span class="muted small">Curve Optimizer offsets (per-core view):</span>
@@ -1234,8 +1245,8 @@ async function checkPanicRevert() {
     if (!r.ok || !r.data) return;
     const p = r.data;
     const html = `<h2>⚠ Previous run crash detected</h2>
-      <p>The last session left a panic-revert breadcrumb at <code>${new Date(p.capturedAt).toLocaleString()}</code>.<br>
-      It was in the middle of <strong>${p.reason}</strong> with CO values <code>${(p.values || []).join(',')}</code>.</p>
+      <p>The last session left a panic-revert breadcrumb at <code>${escHtml(new Date(p.capturedAt).toLocaleString())}</code>.<br>
+      It was in the middle of <strong>${escHtml(p.reason)}</strong> with CO values <code>${escHtml((p.values || []).join(','))}</code>.</p>
       <p>This usually means a BSOD or hard hang while tuning. Recommended: revert to the launch snapshot, then start the next test with safer limits.</p>
       <div class="actions">
         <button class="primary" id="panic-revert-apply">Revert to launch snapshot</button>
@@ -1255,7 +1266,7 @@ async function checkPendingSmartSession() {
     if (!r.ok || !r.data) return;
     const p = r.data;
     const html = `<h2>⏸ Smart Tune session was in progress when the system stopped</h2>
-      <p>Mode: <strong>${p.mode || '?'}</strong> · status when stopped: <strong>${p.status || '?'}</strong></p>
+      <p>Mode: <strong>${escHtml(p.mode || '?')}</strong> · status when stopped: <strong>${escHtml(p.status || '?')}</strong></p>
       <p>You can resume from this point, or discard the session and start fresh.</p>
       <div class="actions">
         <button class="primary" id="smart-resume">Resume</button>
@@ -1433,9 +1444,9 @@ const SmartTune = (() => {
         windowWidthPct = 100 * (hi - lo) / span;
       }
       return `<div class="theater-scope ${cls}">
-        <div class="s-id">${sc.id}${sc.isVCache ? ' 🔋' : ''}</div>
+        <div class="s-id">${escHtml(sc.id)}${sc.isVCache ? ' 🔋' : ''}</div>
         <div class="s-bounds">${bounds}</div>
-        <div class="s-bounds">${knownLine}</div>
+        <div class="s-bounds">${escHtml(knownLine)}</div>
         ${lockedLine}
         <div class="s-bisect"><div class="s-bisect-window" style="left:${windowLeftPct}%;width:${windowWidthPct}%"></div></div>
       </div>`;
@@ -1449,7 +1460,7 @@ const SmartTune = (() => {
         if (e.seqId <= lastSeqId) return;
         const line = document.createElement('div');
         line.className = 'narr-line';
-        line.innerHTML = `<span class="narr-ts">${fmtTime(e.ts)}</span><span class="narr-icon">${e.icon}</span>${e.message}`;
+        line.innerHTML = `<span class="narr-ts">${fmtTime(e.ts)}</span><span class="narr-icon">${escHtml(e.icon)}</span>${escHtml(e.message)}`;
         log.appendChild(line);
         lastSeqId = e.seqId;
       });
@@ -1462,7 +1473,7 @@ const SmartTune = (() => {
     if (cur && cur.scopeState) {
       const ss = cur.scopeState;
       document.getElementById('theater-currently').innerHTML =
-        `▶ Probing <strong>${cur.id}</strong> — bounds [${ss.knownStable ?? '?'}, ${ss.knownUnstable ?? '?'}], probe ${ss.probesCompleted + 1}, last result ${ss.lastResult || '—'}`;
+        `▶ Probing <strong>${escHtml(cur.id)}</strong> — bounds [${ss.knownStable ?? '?'}, ${ss.knownUnstable ?? '?'}], probe ${ss.probesCompleted + 1}, last result ${escHtml(ss.lastResult || '—')}`;
     } else if (s.status === 'COMPLETED') {
       document.getElementById('theater-currently').innerHTML = '✅ Tune complete — see report below';
     } else if (s.status === 'RUNNING') {

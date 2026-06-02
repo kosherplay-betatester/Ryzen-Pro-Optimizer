@@ -30,7 +30,24 @@ function Get-ProfilesDir { $script:ProfilesDir }
 function Get-SafeProfileName {
     param([string]$Name)
     if ([string]::IsNullOrWhiteSpace($Name)) { throw "Profile name required" }
-    $Name -replace '[\\/:*?"<>|]','_'
+    # Strip the path-injection characters first.
+    $safe = $Name -replace '[\\/:*?"<>|]','_'
+    # Windows reserved device names (CON, PRN, NUL, AUX, COM1-9, LPT1-9)
+    # also need to be blocked. A profile named "NUL" silently writes to
+    # the null device and Get-Content hangs forever - the data just
+    # vanishes with no error. Match case-insensitive on the basename only.
+    if ($safe -match '^(CON|PRN|NUL|AUX|COM[1-9]|LPT[1-9])$') {
+        $safe = "$safe`_"
+    }
+    # Trailing dots and spaces are stripped by the Win32 file API at
+    # creation time, producing files that can't be deleted with normal
+    # tools. Strip them ourselves so the stored name matches the path.
+    $safe = $safe.TrimEnd('. ')
+    if ([string]::IsNullOrEmpty($safe)) { throw "Profile name became empty after sanitization" }
+    # Cap the basename so the full path stays well under MAX_PATH.
+    # profiles\<name>.json - the prefix+suffix is ~15 chars, leave headroom.
+    if ($safe.Length -gt 200) { $safe = $safe.Substring(0, 200) }
+    $safe
 }
 
 function Get-ProfileList {
@@ -95,7 +112,11 @@ function Save-PreTuneSnapshot {
         [string]$CpuModel = '',
         [int]$CcdCount = 0
     )
-    $stamp = (Get-Date -Format 'yyyy-MM-dd-HHmmss')
+    # Millisecond precision in the timestamp - second-resolution let two
+    # snapshots in the same second silently overwrite each other when the
+    # second one was supposed to be a different starting point. A
+    # browser double-click on Start could destroy the original baseline.
+    $stamp = (Get-Date -Format 'yyyy-MM-dd-HHmmssfff')
     $name = "pre-$Process-$stamp"
     $valuesObj = [ordered]@{}
     for ($i = 0; $i -lt $CurrentValues.Count; $i++) {
@@ -135,7 +156,16 @@ function ConvertTo-CoreArray {
         }
         'per-core' {
             for ($i = 0; $i -lt $CoreCount; $i++) {
-                $values[$i] = [int]$Profile.values."$i"
+                # Explicit null check: silently coercing a missing key
+                # to 0 means moving a profile from a 16-core CPU to a
+                # 24-core CPU would write CO=0 to cores 16..23 without
+                # any warning. That's the wrong default; surface the
+                # mismatch instead.
+                $key = "$i"
+                if (-not $Profile.values.PSObject.Properties[$key]) {
+                    throw "Profile is missing per-core value for core $i (saved for fewer cores than the current CPU)"
+                }
+                $values[$i] = [int]$Profile.values.$key
             }
         }
         default { throw "Unknown profile mode: $($Profile.mode)" }

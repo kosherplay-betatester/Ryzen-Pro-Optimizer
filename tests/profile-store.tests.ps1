@@ -19,7 +19,7 @@ Describe 'Save-PreTuneSnapshot' {
         $values = @(-10,-10,-10,-10,-10,-10,-10,-10,-20,-20,-20,-20,-20,-20,-20,-20)
         $saved = Save-PreTuneSnapshot -Process 'auto-adjust' -CurrentValues $values `
                     -CpuModel 'AMD Ryzen 9 7950X3D' -CcdCount 2
-        $saved.name      | Should -Match '^pre-auto-adjust-\d{4}-\d{2}-\d{2}-\d{6}$'
+        $saved.name      | Should -Match '^pre-auto-adjust-\d{4}-\d{2}-\d{2}-\d{9}$'
         $saved.mode      | Should -Be 'per-core'
         $saved.coreCount | Should -Be 16
         $saved.ccdCount  | Should -Be 2
@@ -33,7 +33,7 @@ Describe 'Save-PreTuneSnapshot' {
         $values = 0..15 | ForEach-Object { 0 }
         $saved = Save-PreTuneSnapshot -Process 'smart-tune' -CurrentValues $values `
                     -CpuModel 'AMD Ryzen 9 7950X3D' -CcdCount 2
-        $saved.name  | Should -Match '^pre-smart-tune-\d{4}-\d{2}-\d{2}-\d{6}$'
+        $saved.name  | Should -Match '^pre-smart-tune-\d{4}-\d{2}-\d{2}-\d{9}$'
         $saved.notes | Should -Match 'Smart Auto-Adjust'
     }
 

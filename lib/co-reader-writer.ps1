@@ -89,17 +89,25 @@ function Get-AllCoreCo {
     $psi.RedirectStandardError = $true
     $psi.CreateNoWindow = $true
 
+    # try/finally so the Process handle is always disposed - the timeout
+    # path used to `throw` before Dispose ran, leaking an OS handle per
+    # timeout under 1Hz polling. Declare vars before the try so the
+    # downstream branches see them under Set-StrictMode.
     $proc = New-Object System.Diagnostics.Process
     $proc.StartInfo = $psi
-    $null = $proc.Start()
-    $stdOut = $proc.StandardOutput.ReadToEnd()
-    $stdErr = $proc.StandardError.ReadToEnd()
-    if (-not $proc.WaitForExit(5000)) {
-        try { $proc.Kill() } catch {}
-        throw "ryzen-smu-cli --get-offsets-terse timed out after 5s"
+    $stdOut = ''; $stdErr = ''; $exitCode = -1
+    try {
+        $null = $proc.Start()
+        $stdOut = $proc.StandardOutput.ReadToEnd()
+        $stdErr = $proc.StandardError.ReadToEnd()
+        if (-not $proc.WaitForExit(5000)) {
+            try { $proc.Kill() } catch {}
+            throw "ryzen-smu-cli --get-offsets-terse timed out after 5s"
+        }
+        $exitCode = $proc.ExitCode
+    } finally {
+        $proc.Dispose()
     }
-    $exitCode = $proc.ExitCode
-    $proc.Dispose()
 
     if ($exitCode -ne 0) {
         $msg = "ryzen-smu-cli --get-offsets-terse failed (exit $exitCode). STDERR: $stdErr STDOUT: $stdOut"
@@ -141,17 +149,22 @@ function Set-AllCoreCo {
     $psi.RedirectStandardError = $true
     $psi.CreateNoWindow = $true
 
+    # Same handle-leak fix as Get-AllCoreCo: dispose in finally.
     $proc = New-Object System.Diagnostics.Process
     $proc.StartInfo = $psi
-    $null = $proc.Start()
-    $stdOut = $proc.StandardOutput.ReadToEnd()
-    $stdErr = $proc.StandardError.ReadToEnd()
-    if (-not $proc.WaitForExit(5000)) {
-        try { $proc.Kill() } catch {}
-        throw "ryzen-smu-cli --offset timed out after 5s"
+    $stdOut = ''; $stdErr = ''; $exitCode = -1
+    try {
+        $null = $proc.Start()
+        $stdOut = $proc.StandardOutput.ReadToEnd()
+        $stdErr = $proc.StandardError.ReadToEnd()
+        if (-not $proc.WaitForExit(5000)) {
+            try { $proc.Kill() } catch {}
+            throw "ryzen-smu-cli --offset timed out after 5s"
+        }
+        $exitCode = $proc.ExitCode
+    } finally {
+        $proc.Dispose()
     }
-    $exitCode = $proc.ExitCode
-    $proc.Dispose()
 
     if ($exitCode -ne 0) {
         $msg = "ryzen-smu-cli --offset failed (exit $exitCode). STDERR: $stdErr STDOUT: $stdOut"
