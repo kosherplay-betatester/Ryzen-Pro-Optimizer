@@ -149,7 +149,13 @@ if (Test-Path $panicPath) {
         Write-Host "  The UI will offer to revert to safer values." -ForegroundColor Yellow
         Write-Host "============================================================" -ForegroundColor Yellow
         Write-Host ""
-    } catch {}
+    } catch {
+        # Don't swallow silently - a corrupted panic-revert file is the
+        # exact case this code is meant to handle, and silent failure
+        # means the user never sees the recovery prompt.
+        Write-Log WARN "Panic-revert breadcrumb is unreadable: $($_.Exception.Message). Discarding so the next test can start cleanly."
+        try { Remove-Item $panicPath -Force -ErrorAction SilentlyContinue } catch {}
+    }
 }
 
 $script:PendingSmartSession = $null
@@ -165,7 +171,13 @@ if (Test-Path $sessPath) {
         Write-Host "  The UI will offer to resume or discard." -ForegroundColor Yellow
         Write-Host "============================================================" -ForegroundColor Yellow
         Write-Host ""
-    } catch {}
+    } catch {
+        # See panic-revert catch above. Same reasoning: a truncated
+        # tuner-session.json (mid-write crash) is the recovery case
+        # itself - log it and discard so resume options stay clean.
+        Write-Log WARN "Pending Smart Tune session JSON is unreadable: $($_.Exception.Message). Discarding."
+        try { Remove-Item $sessPath -Force -ErrorAction SilentlyContinue } catch {}
+    }
 }
 
 # Graceful shutdown: revert CO, stop test, close listener

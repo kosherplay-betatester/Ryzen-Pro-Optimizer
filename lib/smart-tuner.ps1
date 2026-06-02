@@ -25,11 +25,23 @@ function Save-TuneSession {
         [Parameter(Mandatory)][string]$Path,
         [Parameter(Mandatory)]$Session
     )
-    $dir = Split-Path $Path -Parent
-    if ($dir -and -not (Test-Path $dir)) { New-Item -ItemType Directory -Force -Path $dir | Out-Null }
-    $tmp = "$Path.tmp"
-    $Session | ConvertTo-Json -Depth 10 | Set-Content -Path $tmp -Encoding UTF8
-    Move-Item -Force $tmp $Path
+    # Best-effort: a Set-Content failure (disk full, dir removed between
+    # check and write, transient AV lock) used to propagate as a
+    # terminating error and crash Step-SmartTune, dropping all in-memory
+    # state on the floor. The session JSON is a recovery aid, not the
+    # source of truth - losing one save is recoverable, crashing the
+    # orchestrator mid-probe is not.
+    try {
+        $dir = Split-Path $Path -Parent
+        if ($dir -and -not (Test-Path $dir)) { New-Item -ItemType Directory -Force -Path $dir | Out-Null }
+        $tmp = "$Path.tmp"
+        $Session | ConvertTo-Json -Depth 10 | Set-Content -Path $tmp -Encoding UTF8
+        Move-Item -Force $tmp $Path
+    } catch {
+        if (Get-Command Write-Log -ErrorAction SilentlyContinue) {
+            Write-Log WARN "Save-TuneSession failed (continuing): $($_.Exception.Message)"
+        }
+    }
 }
 
 function Load-TuneSession {

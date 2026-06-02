@@ -262,7 +262,24 @@ function Test-CoreCyclerInstalled {
 }
 
 function Test-LhmInstalled {
-    Test-Path (Join-Path $VendorDir 'LibreHardwareMonitorLib.dll')
+    # Check every DLL in the pinned NuGet recipe, not just the main one.
+    # A partial install (NuGet 404 mid-loop, AV quarantine, disk full)
+    # used to leave vendor/ with a subset of the stack. The main DLL
+    # would be present but LHM's Open() fails at runtime with
+    # TypeLoadException because System.Memory or HidSharp is missing.
+    # All six are load-bearing for the sensor stack to actually work.
+    $required = @(
+        'LibreHardwareMonitorLib.dll',
+        'DiskInfoToolkit.dll',
+        'RAMSPDToolkit-NDD.dll',
+        'HidSharp.dll',
+        'System.Memory.dll',
+        'System.Runtime.CompilerServices.Unsafe.dll'
+    )
+    foreach ($dll in $required) {
+        if (-not (Test-Path (Join-Path $VendorDir $dll))) { return $false }
+    }
+    $true
 }
 
 function Test-PawnIoInstalled {
