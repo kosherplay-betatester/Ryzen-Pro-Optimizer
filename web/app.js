@@ -486,6 +486,70 @@ const ProDash = (() => {
     return cpuInfo.Cores;
   }
 
+  // Legend click handler with a third "solo" state via shift+click.
+  // - Plain click: toggle visibility of the clicked dataset (Chart.js default)
+  // - Shift+click: hide every other dataset and show only this one.
+  //   If this dataset is already the only visible one, restore all.
+  // This gives the user the three states they asked for (show / hide /
+  // show-only-this) with one click + one modifier - no submenu needed.
+  function legendClickHandler(e, legendItem, legend) {
+    const chart = legend.chart;
+    const idx = legendItem.datasetIndex;
+    const shift = e && e.native && e.native.shiftKey;
+    if (shift) {
+      const visible = chart.data.datasets.map((_, i) => chart.isDatasetVisible(i));
+      const visibleCount = visible.filter(Boolean).length;
+      const isOnlyVisible = visibleCount === 1 && visible[idx];
+      chart.data.datasets.forEach((_, i) => {
+        chart.setDatasetVisibility(i, isOnlyVisible ? true : (i === idx));
+      });
+    } else {
+      chart.setDatasetVisibility(idx, !chart.isDatasetVisible(idx));
+    }
+    chart.update();
+  }
+
+  // HTML tooltip rendered on document.body so it can extend beyond the
+  // canvas. Chart.js's built-in tooltip is drawn ON the canvas, which
+  // clips per-core charts (16 rows + title can be ~300px tall vs a 240px
+  // canvas). pointer-events: none keeps it from blocking the chart hover
+  // that drives it. Edge-flips to stay in the viewport.
+  function externalTooltipHandler(context) {
+    const tt = context.tooltip;
+    let el = document.getElementById('chartjs-html-tooltip');
+    if (!el) {
+      el = document.createElement('div');
+      el.id = 'chartjs-html-tooltip';
+      el.className = 'chartjs-html-tooltip';
+      document.body.appendChild(el);
+    }
+    if (tt.opacity === 0) { el.style.opacity = 0; return; }
+    const title = (tt.title && tt.title[0]) || '';
+    const items = (tt.dataPoints || []).map(dp => {
+      const color = dp.dataset.borderColor || '#888';
+      return `<div class="tt-row"><span class="tt-swatch" style="background:${color}"></span><span class="tt-label">${dp.dataset.label || ''}</span><span class="tt-value">${dp.formattedValue}</span></div>`;
+    }).join('');
+    el.innerHTML = (title ? `<div class="tt-title">${title}</div>` : '') + items;
+    el.style.opacity = 1;
+    // Measure after content insertion, then position
+    const canvasRect = context.chart.canvas.getBoundingClientRect();
+    const ttRect = el.getBoundingClientRect();
+    const gap = 12;
+    let x = canvasRect.left + window.pageXOffset + tt.caretX + gap;
+    let y = canvasRect.top + window.pageYOffset + tt.caretY - ttRect.height / 2;
+    // Flip to the left if it would overflow the right edge
+    if (x + ttRect.width > window.innerWidth + window.pageXOffset - 8) {
+      x = canvasRect.left + window.pageXOffset + tt.caretX - ttRect.width - gap;
+    }
+    // Clamp to viewport vertically
+    const minY = window.pageYOffset + 8;
+    const maxY = window.innerHeight + window.pageYOffset - ttRect.height - 8;
+    if (y < minY) y = minY;
+    if (y > maxY) y = maxY;
+    el.style.left = x + 'px';
+    el.style.top = y + 'px';
+  }
+
   function buildLineChart(canvasId, label, opts) {
     opts = opts || {};
     const ctx = document.getElementById(canvasId);
@@ -520,8 +584,9 @@ const ProDash = (() => {
         interaction: { mode: 'nearest', intersect: false },
         plugins: {
           legend: { display: !!opts.legend, position: 'bottom', align: 'start',
-                    labels: { color: '#8b95a8', boxWidth: 10, font: { size: 10 }, padding: 6, usePointStyle: false } },
-          tooltip: { enabled: true, mode: 'index', intersect: false }
+                    labels: { color: '#8b95a8', boxWidth: 10, font: { size: 10 }, padding: 6, usePointStyle: false },
+                    onClick: legendClickHandler },
+          tooltip: { enabled: false, external: externalTooltipHandler, mode: 'index', intersect: false }
         },
         scales: {
           x: { ticks: { color: '#5e6878', maxTicksLimit: 6, font: { size: 10 } },

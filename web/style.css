@@ -322,6 +322,31 @@ kbd { background: var(--border); padding: 0.1rem 0.4rem; border-radius: 3px; fon
 .modal-card h3 { margin: 0 0 0.4rem; font-size: 1.05rem; }
 .apply-summary { background: rgba(255,255,255,0.03); border-left: 3px solid var(--primary); border-radius: 0 4px 4px 0; padding: 0.6rem 0.8rem; margin: 0.6rem 0 0.4rem; font-size: 0.85rem; }
 .apply-summary-header { font-size: 0.95rem; margin-bottom: 0.2rem; }
+
+/* HTML tooltip for Chart.js line charts. Lives on document.body so it
+   isn't clipped by the canvas - the per-core charts need 16+ rows and
+   the canvas is only 240px tall. */
+.chartjs-html-tooltip {
+  position: absolute; pointer-events: none;
+  background: rgba(15, 23, 42, 0.96);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 6px;
+  padding: 0.55rem 0.75rem;
+  font-size: 0.78rem; line-height: 1.4;
+  max-height: 70vh; max-width: 300px;
+  overflow-y: auto;
+  z-index: 10000; opacity: 0;
+  transition: opacity 0.12s ease;
+  color: #cbd5e1;
+  box-shadow: 0 10px 28px rgba(0,0,0,0.55);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.chartjs-html-tooltip .tt-title { font-weight: 600; color: var(--accent); margin-bottom: 0.35rem; font-size: 0.82rem; }
+.chartjs-html-tooltip .tt-row { display: flex; align-items: center; gap: 0.5rem; }
+.chartjs-html-tooltip .tt-swatch { width: 10px; height: 10px; border-radius: 2px; flex-shrink: 0; }
+.chartjs-html-tooltip .tt-label { color: var(--muted); min-width: 32px; }
+.chartjs-html-tooltip .tt-value { color: var(--text); margin-left: auto; }
 /* Per-core charts use a wide row so the legend (16 cores) fits in one or
    two clean rows below the plot. Without extra height the legend eats
    into the plot area. */
@@ -341,6 +366,13 @@ kbd { background: var(--border); padding: 0.1rem 0.4rem; border-radius: 3px; fon
   width: 100% !important;
   height: 200px !important;
   display: block;
+}
+.chart-title .chart-hint {
+  text-transform: none;
+  letter-spacing: 0;
+  font-size: 0.68rem;
+  opacity: 0.65;
+  font-weight: normal;
 }
 
 /* per-core heatmap (improved) */

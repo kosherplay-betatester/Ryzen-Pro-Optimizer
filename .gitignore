@@ -26,6 +26,9 @@ profiles/*.json
 # Claude Code per-user overrides (not for the team)
 .claude/settings.local.json
 
+# Local screenshot scratchpad (used for sharing UI shots with Claude)
+screenshots/
+
 # OS
 Thumbs.db
 desktop.ini
