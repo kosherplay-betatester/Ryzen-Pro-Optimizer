@@ -164,14 +164,33 @@ function Invoke-ServerLoop {
 
             # Static files from web root
             $relPath = if ($rawUrl -eq '/') { 'index.html' } else { $rawUrl.TrimStart('/') }
-            # Prevent path traversal
+            # Prevent path traversal. The simple `\.\.` regex catches the
+            # common case, but it misses absolute-path injection: a URL
+            # like /C:/Windows/... becomes "C:/Windows/..." after
+            # TrimStart, and Join-Path silently returns the right-hand
+            # absolute path (escaping $WebRoot entirely). Canonicalize
+            # both paths with GetFullPath and verify the resolved file
+            # is actually inside the resolved web root.
             if ($relPath -match '\.\.') {
                 $context.Response.StatusCode = 403
                 $context.Response.OutputStream.Close()
                 continue
             }
             $filePath = Join-Path $WebRoot $relPath
-            Send-FileResponse -Context $context -Path $filePath
+            try {
+                $resolvedFile = [IO.Path]::GetFullPath($filePath)
+                $resolvedRoot = [IO.Path]::GetFullPath($WebRoot).TrimEnd('\','/') + [IO.Path]::DirectorySeparatorChar
+            } catch {
+                $resolvedFile = $filePath
+                $resolvedRoot = $WebRoot
+            }
+            if (-not $resolvedFile.StartsWith($resolvedRoot, [StringComparison]::OrdinalIgnoreCase)) {
+                Write-Log WARN "Path traversal blocked: $rawUrl resolved to $resolvedFile outside $resolvedRoot"
+                $context.Response.StatusCode = 403
+                $context.Response.OutputStream.Close()
+                continue
+            }
+            Send-FileResponse -Context $context -Path $resolvedFile
         } catch {
             $ex = $_.Exception
             $typeName = $ex.GetType().FullName

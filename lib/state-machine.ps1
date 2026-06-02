@@ -57,7 +57,15 @@ function Set-CurrentState {
             throw "Invalid state transition: $($script:State) -> $NewState"
         }
     }
-    Write-Log INFO "State: $($script:State) -> $NewState"
+    # Self-transitions skip validation. Log them at DEBUG so a double-
+    # start race (two browser tabs both POSTing /api/test/start) is at
+    # least visible - previously the second call silently replaced the
+    # first call's StateData with its own with zero indication.
+    if ($NewState -eq $script:State) {
+        Write-Log DEBUG "Set-CurrentState: self-transition $NewState (StateData replaced)"
+    } else {
+        Write-Log INFO "State: $($script:State) -> $NewState"
+    }
     $script:State = $NewState
     if ($Data) { $script:StateData = $Data }
 }

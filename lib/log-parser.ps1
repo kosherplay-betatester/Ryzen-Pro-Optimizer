@@ -84,8 +84,12 @@ function Read-CoreCyclerLog {
         if ($l -match 'cores with an error so far:\s*(\d+)') { $lastErrorCount = [int]$Matches[1] }
         if ($l -match 'cores with a WHEA error so far:\s*(\d+)') { $lastWheaCount = [int]$Matches[1] }
 
-        # Detect per-core error event from the Event Log entries CoreCycler writes
-        if ($l -match 'core_error|has thrown an error|core .* errored') {
+        # Detect per-core error event from the Event Log entries CoreCycler writes.
+        # The third pattern used to be `core .* errored` which would
+        # also match informational lines like "checking if core 4 has
+        # errored (none found)" - leading to false FAILED verdicts.
+        # Now requires a digit after "core" and word-boundary anchoring.
+        if ($l -match 'core_error\b|has thrown an error\b|\bcore \d+ (has )?errored\b') {
             $coreErrorLineIndexes += $i
         }
     }

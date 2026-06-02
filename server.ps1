@@ -182,6 +182,13 @@ if (Test-Path $sessPath) {
 
 # Graceful shutdown: revert CO, stop test, close listener
 function Invoke-GracefulShutdown {
+    # Idempotent: the tick callback fires from two places (inside the
+    # async WaitOne poll loop AND after each request dispatch). Without
+    # this early-return, a rapid request burst that happens to coincide
+    # with a heartbeat timeout could invoke this twice, doing the CO
+    # revert and Stop-CoreCyclerRun work redundantly.
+    if ($script:ShutdownRequested) { return }
+    $script:ShutdownRequested = $true
     Write-Log INFO "Graceful shutdown initiated"
     Write-Host ""
     Write-Host "Shutting down - reverting CO and cleaning up..." -ForegroundColor Yellow
@@ -207,7 +214,6 @@ function Invoke-GracefulShutdown {
         }
     }
 
-    $script:ShutdownRequested = $true
 }
 
 # Initialize CO tool (best effort - server can still run if missing, just shows error)

@@ -87,7 +87,12 @@ function Get-CpuInfo {
         $info.VCacheCcdIndex = $o.vCacheCcdIndex
     } else {
         # Heuristic fallback: >8 cores = dual CCD on consumer Ryzen
-        $info.IsDualCcd = $cores -gt 8
+        # desktop parts. BUT: mobile/APU parts (H/U/HS/HX suffix) are
+        # monolithic single-CCD even at 8 cores (Cezanne 5800H, Phoenix
+        # 7840HS, Hawk Point 8945HS). Misclassifying as dual-CCD
+        # produces wrong per-CCD CO groupings in the UI.
+        $isMobile = $name -match '\b\d{4}[HUC][SX]?\b|\bPRO \d{4}[HU]\b'
+        $info.IsDualCcd = ($cores -gt 8) -and -not $isMobile
         # Zen gen guess from leading model digit
         if ($name -match 'Ryzen \d+ (\d)\d{3}') {
             switch ($Matches[1]) {

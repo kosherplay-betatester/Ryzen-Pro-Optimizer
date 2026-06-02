@@ -68,6 +68,16 @@ function Enable-SafetyGuard {
         [scriptblock]$OnAbort,
         [int]$WheaBaseline = 0
     )
+    # Double-arm guard. The state machine normally prevents two
+    # back-to-back armings (a second start handler short-circuits while
+    # state == TESTING), but a future refactor or a manual /api call
+    # could miss that gate. If we silently overwrote OnAbort, the
+    # previous run's abort would route through a stale closure. Disable
+    # cleanly first and log so the double-arm is at least visible.
+    if ($script:Safety.Active) {
+        Write-Log WARN "Enable-SafetyGuard called while already active - re-arming"
+        Disable-SafetyGuard
+    }
     $script:Safety.Active = $true
     $script:Safety.OnAbort = $OnAbort
     $script:Safety.WheaBaseline = $WheaBaseline

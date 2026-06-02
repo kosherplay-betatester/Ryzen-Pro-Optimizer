@@ -904,6 +904,12 @@ const ProDash = (() => {
   function hide() {
     document.getElementById('pro-dashboard')?.classList.add('hidden');
     document.getElementById('pro-toggle')?.classList.remove('hidden');
+    // Hide the HTML chart tooltip if it's still pinned at its last
+    // position from a previous hover. Without this it stays mounted
+    // on document.body at opacity 0 forever, technically harmless but
+    // an orphan element we may as well clean up.
+    const tt = document.getElementById('chartjs-html-tooltip');
+    if (tt) tt.style.opacity = 0;
   }
   function isVisible() {
     return !document.getElementById('pro-dashboard')?.classList.contains('hidden');
@@ -1066,7 +1072,21 @@ async function loadHelpContent() {
   if (target.dataset.loaded === '1') return;
   try {
     const r = await fetch('/help.html');
-    target.innerHTML = await r.text();
+    const text = await r.text();
+    // Defense in depth. The help fragment is served from our local
+    // web/ folder so it's trusted in practice, but blindly assigning
+    // fetched text to innerHTML is a habit that bites elsewhere. Parse
+    // it in a detached document, strip <script> tags and inline event
+    // handlers + javascript: hrefs, then import.
+    const doc = new DOMParser().parseFromString(text, 'text/html');
+    doc.querySelectorAll('script').forEach(s => s.remove());
+    doc.querySelectorAll('*').forEach(el => {
+      [...el.attributes].forEach(a => {
+        if (a.name.toLowerCase().startsWith('on')) el.removeAttribute(a.name);
+        if ((a.name === 'href' || a.name === 'src') && a.value.trim().toLowerCase().startsWith('javascript:')) el.removeAttribute(a.name);
+      });
+    });
+    target.innerHTML = doc.body.innerHTML;
     target.dataset.loaded = '1';
   } catch (e) {
     target.innerHTML = '<p>Help content failed to load.</p>';
