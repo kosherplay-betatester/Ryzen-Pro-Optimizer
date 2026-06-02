@@ -30,7 +30,13 @@ $script:ValidTransitions = @{
     'APPLYING_CO' = @('IDLE','TESTING','ERROR')
     'TESTING'     = @('STOPPING','REPORTING','ERROR')
     'STOPPING'    = @('REPORTING','IDLE','ERROR')
-    'REPORTING'   = @('IDLE','ERROR')
+    # REPORTING -> TESTING / APPLYING_CO: the /api/test/start,
+    # /api/smart-tune/start, and /api/co handlers all accept REPORTING
+    # as a valid starting state (user finished one run, wants to start
+    # the next without an intermediate IDLE step). Without these
+    # entries Set-CurrentState would throw on the second back-to-back
+    # run.
+    'REPORTING'   = @('IDLE','APPLYING_CO','TESTING','ERROR')
     'ERROR'       = @('IDLE')
 }
 

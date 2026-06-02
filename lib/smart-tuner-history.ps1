@@ -36,12 +36,20 @@ function Read-HistoryEntries {
     )
     if (-not (Test-Path $Path)) { return @() }
     $out = New-Object System.Collections.Generic.List[object]
+    # Normalize for matching. Trim trailing whitespace, collapse runs
+    # of internal whitespace, lowercase. A microcode-revision suffix or
+    # a stray space difference between sessions used to silently miss
+    # the history (exact-string compare) and the search restarted cold.
+    $wantNorm = if ($CpuModel) { ($CpuModel.Trim() -replace '\s+',' ').ToLowerInvariant() } else { $null }
     Get-Content -Path $Path -ErrorAction SilentlyContinue | ForEach-Object {
         try {
             $obj = $_ | ConvertFrom-Json
-            if (-not $CpuModel -or $obj.cpuModel -eq $CpuModel) {
-                $out.Add($obj)
+            $match = $true
+            if ($wantNorm) {
+                $gotNorm = if ($obj.cpuModel) { (([string]$obj.cpuModel).Trim() -replace '\s+',' ').ToLowerInvariant() } else { '' }
+                $match = ($gotNorm -eq $wantNorm)
             }
+            if ($match) { $out.Add($obj) }
         } catch {}
     }
     , @($out.ToArray())

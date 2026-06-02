@@ -256,6 +256,14 @@ function Resume-SmartTune {
             status   = if ($st -eq 'LOCKED' -or $st -eq 'FAILED') { $st } else { 'PENDING' }
             phase    = $s.phase
             locked   = if ($s.PSObject.Properties['locked']) { $s.locked } else { $null }
+            # Carry scopeState forward for terminal scopes. Without this,
+            # a resumed LOCKED scope showed probesCompleted=0 in the UI
+            # and phase-B per-core scopes that look up their parent CCD
+            # scope's locked value (see Step-SmartTune below) had no
+            # bounds/knownStable to seed from.
+            scopeState = if (($st -eq 'LOCKED' -or $st -eq 'FAILED') -and $s.PSObject.Properties['scopeState'] -and $null -ne $s.scopeState) {
+                $s.scopeState
+            } else { $null }
         })
     }
 
@@ -337,11 +345,31 @@ function Step-SmartTune {
                 $crash = Get-KnownCrashFloor    -Path $script:Tune.HistoryPath -CpuModel $script:Tune.Cpu.Name -Scope $sc.id
             } catch {}
         }
-        $newScope = if ($null -ne $hist -or $null -ne $crash) {
-            New-ScopeState -ScopeId $sc.id -IsVCache $sc.isVCache -SeedValue 0 -Policy $script:Tune.Policy `
-                -KnownStableHint $hist -KnownCrashFloor $crash
+        # Phase-B (per-core) scopes seed from the parent CCD's already-
+        # locked value. Without this the per-core search restarts at 0
+        # and burns probes walking through territory we already proved
+        # stable for the whole CCD this session. The CCD lock is also
+        # the strongest available "known stable" hint for the core.
+        $parentSeed = $null
+        if ($sc.phase -eq 'B' -and $sc.cores.Count -gt 0 -and $script:Tune.Cpu.CoresPerCcd -gt 0) {
+            $ccdIdx = [int]([Math]::Floor($sc.cores[0] / $script:Tune.Cpu.CoresPerCcd))
+            $parentId = "CCD$ccdIdx"
+            foreach ($s2 in $script:Tune.Scopes) {
+                if ($s2.id -eq $parentId -and $s2.status -eq 'LOCKED' -and $null -ne $s2.locked) {
+                    $parentSeed = [int]$s2.locked; break
+                }
+            }
+        }
+        $seedValue  = if ($null -ne $parentSeed) { $parentSeed } else { 0 }
+        # If no cross-session history exists but we have a parent-CCD
+        # seed, treat it as the knownStable hint - we proved it stable
+        # at the CCD level this session.
+        $stableHint = if ($null -ne $hist) { $hist } elseif ($null -ne $parentSeed) { $parentSeed } else { $null }
+        $newScope = if ($null -ne $stableHint -or $null -ne $crash) {
+            New-ScopeState -ScopeId $sc.id -IsVCache $sc.isVCache -SeedValue $seedValue -Policy $script:Tune.Policy `
+                -KnownStableHint $stableHint -KnownCrashFloor $crash
         } else {
-            New-ScopeState -ScopeId $sc.id -IsVCache $sc.isVCache -SeedValue 0 -Policy $script:Tune.Policy
+            New-ScopeState -ScopeId $sc.id -IsVCache $sc.isVCache -SeedValue $seedValue -Policy $script:Tune.Policy
         }
         $sc | Add-Member -NotePropertyName scopeState -NotePropertyValue $newScope -Force
         $sc.status = 'PROBING'

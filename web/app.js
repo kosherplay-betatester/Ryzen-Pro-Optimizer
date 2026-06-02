@@ -243,6 +243,7 @@ function nowSlug() {
 }
 
 let pendingApplyBody = null;
+let applyInFlight = false;
 
 // Apply gateway: shows a confirm modal with the settings the user is about
 // to write, and offers to auto-save them as a named profile first. The
@@ -272,6 +273,9 @@ async function applyCo() {
 }
 
 async function performApply(body, alsoSaveProfile) {
+  if (applyInFlight) return;
+  applyInFlight = true;
+  try {
   if (alsoSaveProfile) {
     const name = 'set-curve-optimizer-' + nowSlug();
     const saveBody = Object.assign({}, body, { name, notes: 'Auto-saved before manual Apply' });
@@ -296,6 +300,7 @@ async function performApply(body, alsoSaveProfile) {
   }
   await loadCoValues();
   if (alsoSaveProfile) await loadProfiles();
+  } finally { applyInFlight = false; }
 }
 
 async function revertCo() {
@@ -919,7 +924,14 @@ const ProDash = (() => {
   return { ingest, show, hide, isVisible, resetStats };
 })();
 
+let pollStatusInFlight = false;
+let lastObservedState = null;
 async function pollStatus() {
+  // Guard against overlapping calls. setInterval fires every 1s, but if
+  // the server is slow a second poll would start before the first
+  // returns, racing the UI updates.
+  if (pollStatusInFlight) return;
+  pollStatusInFlight = true;
   try {
     const r = await fetchJson('/api/status');
     const s = r.data;
@@ -931,7 +943,10 @@ async function pollStatus() {
          <p>Errors so far: ${c.errors} · WHEA: ${c.wheaErrors} · Runtime: ${c.runtime || '—'}</p>`;
     }
     if (s.state === 'REPORTING') {
-      loadReport();
+      // Only fetch + rebuild the report on the *transition* into
+      // REPORTING; otherwise we re-fetched once per second and reset
+      // the user's scroll position every tick.
+      if (lastObservedState !== 'REPORTING') loadReport();
       document.getElementById('start-test').classList.remove('hidden');
       document.getElementById('stop-test').classList.add('hidden');
     }
@@ -953,7 +968,9 @@ async function pollStatus() {
       BiosSetup.show(`Server reports the last CO write was ignored by the SMU (<strong>${n}</strong> mismatched cores). PBO + Curve Optimizer are almost certainly disabled in BIOS.`);
     }
     renderSafetyBanner(s);
+    lastObservedState = s.state;
   } catch (e) { /* server may be starting */ }
+  finally { pollStatusInFlight = false; }
 }
 
 function renderSafetyBanner(s) {
@@ -1111,9 +1128,18 @@ document.addEventListener('click', async e => {
     loadProfileIntoForm(decodeURIComponent(e.target.dataset.load));
   }
   if (e.target.dataset && e.target.dataset.apply) {
-    const r = await fetchJson('/api/profiles/' + e.target.dataset.apply + '/apply', { method: 'POST' });
-    if (r.ok) { showToast('Profile applied'); formInitialValues = null; loadCoValues(); }
-    else showToast('Apply failed: ' + r.error, 'error');
+    // Guard against the race between this path (apply-from-profile)
+    // and the form's Apply button. Both write to the same SMU. Without
+    // the in-flight flag a fast double-click (or apply-then-modal)
+    // produced two concurrent writes and the SMU ended up in whichever
+    // arrived last.
+    if (applyInFlight) return;
+    applyInFlight = true;
+    try {
+      const r = await fetchJson('/api/profiles/' + e.target.dataset.apply + '/apply', { method: 'POST' });
+      if (r.ok) { showToast('Profile applied'); formInitialValues = null; loadCoValues(); }
+      else showToast('Apply failed: ' + r.error, 'error');
+    } finally { applyInFlight = false; }
   }
   if (e.target.dataset && e.target.dataset.delete) {
     if (!confirm('Delete this profile?')) return;
@@ -1124,6 +1150,19 @@ document.addEventListener('click', async e => {
 
 document.addEventListener('keydown', async e => {
   if (e.key === 'Escape') {
+    // Close the apply-confirmation modal if it's open and drop the
+    // staged body. Otherwise Esc silently primed for a future apply.
+    const modal = document.getElementById('apply-confirm-overlay');
+    if (modal && !modal.classList.contains('hidden')) {
+      modal.classList.add('hidden');
+      pendingApplyBody = null;
+    }
+    // If a test or tune is running, stop it before resetting CO -
+    // writing zeros mid-run silently clobbered the running test's
+    // offsets and the test kept going as if nothing had happened.
+    if (stateName === 'TESTING') {
+      try { await stopTest(); } catch (_) {}
+    }
     await resetCo();
     if (settings.escShutsDown) {
       try { fetch('/api/shutdown', { method: 'POST', keepalive: true }); } catch (_) {}
