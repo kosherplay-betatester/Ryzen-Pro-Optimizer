@@ -121,6 +121,7 @@ h3 { font-size: 0.9rem; margin: 1rem 0 0.4rem; color: var(--text); }
 .core-tile { background: rgba(255,255,255,0.04); padding: 0.4rem; border-radius: 4px; font-size: 0.7rem; line-height: 1.4; text-align: center; }
 .core-tile.temp-warn { background: rgba(245, 158, 11, 0.18); }
 .core-tile.temp-hot  { background: rgba(237, 28, 36, 0.22); }
+.expanded-hint { margin-bottom: 0.4rem; padding-left: 0.2rem; }
 .core-tile .num { font-size: 0.9rem; font-weight: 600; }
 
 /* Profiles */
@@ -180,8 +181,18 @@ h3 { font-size: 0.9rem; margin: 1rem 0 0.4rem; color: var(--text); }
   padding: 0.6rem 0.9rem;
   margin: 0.5rem 0 0.8rem;
 }
-.recovery-details > div { display: flex; flex-direction: column; gap: 0.15rem; }
-.recovery-details strong { font-size: 0.95rem; font-variant-numeric: tabular-nums; }
+.recovery-details > div { display: flex; flex-direction: column; gap: 0.15rem; min-width: 0; }
+.recovery-details strong {
+  font-size: 0.95rem;
+  font-variant-numeric: tabular-nums;
+  /* Long comma-separated lists (e.g., 16-value CO array) must wrap so
+     they stay inside the card. word-break: break-word lets them break
+     at any character if no whitespace is available. */
+  overflow-wrap: anywhere;
+  word-break: break-word;
+  font-family: ui-monospace, Consolas, monospace;
+  font-size: 0.85rem;
+}
 .recovery-card .actions button.big { padding: 0.6rem 1.2rem; font-size: 1rem; }
 
 /* Header badge - sits next to the bodyguard indicator so the recovery

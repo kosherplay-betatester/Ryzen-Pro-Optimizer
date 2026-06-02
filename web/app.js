@@ -487,16 +487,20 @@ function renderTelemetry(t) {
 
 function renderExpandedTelemetry(t) {
   const cores = t.cores || [];
-  if (!cores.length || !cpuInfo) { document.getElementById('telemetry-expanded').innerHTML = '<p class="muted small">No per-core data.</p>'; return; }
+  const target = document.getElementById('telemetry-expanded');
+  if (!cores.length || !cpuInfo) {
+    target.innerHTML = '<p class="muted small">⏳ Waiting for per-core telemetry — LibreHardwareMonitor takes a few seconds to enumerate all cores on first read.</p>';
+    return;
+  }
   const ccds = {};
   cores.forEach(c => {
     const ccd = cpuInfo.IsDualCcd ? Math.floor(c.core / cpuInfo.CoresPerCcd) : 0;
     (ccds[ccd] = ccds[ccd] || []).push(c);
   });
-  let html = '';
+  let html = '<div class="expanded-hint muted small">Per-core view: each tile shows voltage · clock · load%. CCDs are grouped; V-Cache CCD has a 🔋 badge.</div>';
   Object.keys(ccds).sort().forEach(ccd => {
-    const label = cpuInfo.VCacheCcdIndex === +ccd ? `CCD${ccd} (V-Cache)` : `CCD${ccd}`;
-    html += `<div class="muted small">${label}</div><div class="core-grid">`;
+    const label = cpuInfo.VCacheCcdIndex === +ccd ? `CCD${ccd} (V-Cache 🔋)` : `CCD${ccd}`;
+    html += `<div class="muted small" style="margin-top:0.5rem">${label}</div><div class="core-grid">`;
     ccds[ccd].forEach(c => {
       const cls = c.temperature >= 85 ? 'temp-hot' : c.temperature >= 70 ? 'temp-warn' : '';
       html += `<div class="core-tile ${cls}">
