@@ -313,6 +313,11 @@ kbd { background: var(--border); padding: 0.1rem 0.4rem; border-radius: 3px; fon
   position: relative;
 }
 .chart-box.chart-wide { grid-column: 1 / -1; }
+/* Per-core charts use a wide row so the legend (16 cores) fits in one or
+   two clean rows below the plot. Without extra height the legend eats
+   into the plot area. */
+.chart-box.chart-with-legend { min-height: 280px; }
+.chart-box.chart-with-legend canvas { height: 240px !important; }
 .chart-title {
   font-size: 0.78rem;
   color: var(--muted);

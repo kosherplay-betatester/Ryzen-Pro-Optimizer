@@ -442,8 +442,8 @@ const ProDash = (() => {
         maintainAspectRatio: false,
         interaction: { mode: 'nearest', intersect: false },
         plugins: {
-          legend: { display: !!opts.legend, position: 'bottom',
-                    labels: { color: '#8b95a8', boxWidth: 10, font: { size: 10 } } },
+          legend: { display: !!opts.legend, position: 'bottom', align: 'start',
+                    labels: { color: '#8b95a8', boxWidth: 10, font: { size: 10 }, padding: 6, usePointStyle: false } },
           tooltip: { enabled: true, mode: 'index', intersect: false }
         },
         scales: {
@@ -491,9 +491,9 @@ const ProDash = (() => {
       ccdSeries.push({ label: 'CCD0', color: '#3B82F6', w: 1.4 });
       ccdSeries.push({ label: 'CCD1', color: '#10B981', w: 1.4 });
     }
-    charts.clock = buildLineChart('chart-clock', 'Clock', { perCore: true, legend: false, yMin: 0 });
+    charts.clock = buildLineChart('chart-clock', 'Clock', { perCore: true, legend: true, yMin: 0 });
     charts.temp  = buildLineChart('chart-temp',  'Temp',  { series: ccdSeries, legend: true, yMin: 30, yMax: 100 });
-    charts.vid   = buildLineChart('chart-vid',   'VID',   { perCore: true, legend: false, yMin: 0.8, yMax: 1.55 });
+    charts.vid   = buildLineChart('chart-vid',   'VID',   { perCore: true, legend: true, yMin: 0.8, yMax: 1.55 });
     charts.power = buildLineChart('chart-power', 'Power', { series: [{ label: 'Package (W)', color: '#F59E0B', w: 2.2, fill: true }], legend: false, yMin: 0 });
     charts.vf    = buildScatter('chart-vf');
     charts.ready = true;

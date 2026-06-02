@@ -23,6 +23,9 @@ profiles/*.json
 *.swp
 *~
 
+# Claude Code per-user overrides (not for the team)
+.claude/settings.local.json
+
 # OS
 Thumbs.db
 desktop.ini

@@ -64,7 +64,7 @@
       <button id="disclaimer-decline" class="secondary">Close tab</button>
     </div>
     <label class="disclaimer-remember">
-      <input type="checkbox" id="disclaimer-dont-show" checked>
+      <input type="checkbox" id="disclaimer-dont-show">
       Don't show this again on this browser (you can clear it via Settings)
     </label>
   </div>
@@ -149,17 +149,17 @@
     </div>
 
     <div class="chart-grid">
-      <div class="chart-box">
+      <div class="chart-box chart-wide chart-with-legend">
         <div class="chart-title">Per-core clock (MHz)</div>
         <canvas id="chart-clock"></canvas>
+      </div>
+      <div class="chart-box chart-wide chart-with-legend">
+        <div class="chart-title">Per-core voltage (V)</div>
+        <canvas id="chart-vid"></canvas>
       </div>
       <div class="chart-box">
         <div class="chart-title">Temperature (°C)</div>
         <canvas id="chart-temp"></canvas>
-      </div>
-      <div class="chart-box">
-        <div class="chart-title">Per-core voltage (V)</div>
-        <canvas id="chart-vid"></canvas>
       </div>
       <div class="chart-box">
         <div class="chart-title">Package power (W)</div>
