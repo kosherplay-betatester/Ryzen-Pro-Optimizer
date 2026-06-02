@@ -141,6 +141,21 @@ h3 { font-size: 0.9rem; margin: 1rem 0 0.4rem; color: var(--text); }
 .co-pill.neg { color: var(--accent); }
 .co-pill.pos { color: var(--warning); }
 
+/* Live CO card - shows the SMU's actual per-core values during a tune.
+   Visible only while testing; updated every 3s via pollCurrentCo. */
+.live-co-header { display: flex; justify-content: space-between; align-items: center; gap: 1rem; flex-wrap: wrap; }
+.live-co-header h2 { margin: 0; display: flex; align-items: center; gap: 0.5rem; }
+.live-co-pulse { color: var(--success); font-size: 0.9rem; animation: live-co-blink 1.5s infinite; }
+@keyframes live-co-blink { 0%,100% { opacity: 1; } 50% { opacity: 0.3; } }
+.live-co-summary { font-size: 1.1rem; font-variant-numeric: tabular-nums; padding: 0.3rem 0; }
+.live-co-row { display: flex; align-items: center; gap: 0.8rem; padding: 0.4rem 0; border-bottom: 1px solid var(--border); }
+.live-co-row:last-child { border-bottom: 0; }
+.live-co-row-label { min-width: 130px; color: var(--muted); font-size: 0.9rem; }
+.live-co-row-pills { display: flex; flex-wrap: wrap; gap: 0.25rem; flex: 1; }
+.live-co-tab { background: transparent; color: var(--muted); border: 1px solid var(--border); border-radius: 4px; padding: 0.3rem 0.8rem; cursor: pointer; font-size: 0.85rem; }
+.live-co-tab:hover { color: var(--text); }
+.live-co-tab.active { background: var(--primary); color: white; border-color: var(--primary); }
+
 /* Bodyguard indicator */
 .setting-row { display: flex; gap: 0.6rem; align-items: flex-start; margin: 0.6rem 0; padding: 0.5rem; border-radius: 4px; cursor: pointer; }
 .setting-row:hover { background: rgba(255,255,255,0.03); }

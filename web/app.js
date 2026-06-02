@@ -126,6 +126,61 @@ function detectCoMode(values, cpu) {
   return 'per-core';
 }
 
+// Fetch the SMU's current per-core CO without re-rendering the form or
+// switching the mode tab. Used by the Live CO panel during a tune so we
+// can keep showing fresh values without yanking the user's form mode
+// every 3 seconds.
+async function pollCurrentCo() {
+  if (!cpuInfo || !cpuInfo.SupportsCurveOptimizer) return;
+  try {
+    const r = await fetchJson('/api/co/current');
+    if (r && r.data) currentValues = r.data;
+  } catch (_) { /* SMU can be busy during writes; show last known */ }
+}
+
+let liveCoView = 'summary';
+function renderLiveCo() {
+  const el = document.getElementById('live-co-content');
+  if (!el) return;
+  if (!currentValues || !cpuInfo) { el.textContent = 'Waiting for first read…'; return; }
+
+  const pillClass = v => v < 0 ? 'neg' : v > 0 ? 'pos' : 'zero';
+  const fmt = v => (v > 0 ? '+' : '') + v;
+
+  if (liveCoView === 'summary') {
+    el.innerHTML = `<div class="live-co-summary"><strong>${escHtml(summarizeCo(currentValues))}</strong></div>`;
+    return;
+  }
+  if (liveCoView === 'per-ccd' && cpuInfo.CcdCount > 0) {
+    let html = '';
+    for (let c = 0; c < cpuInfo.CcdCount; c++) {
+      const start = c * cpuInfo.CoresPerCcd;
+      const vals = currentValues.slice(start, start + cpuInfo.CoresPerCcd);
+      const allSame = vals.every(v => v === vals[0]);
+      const label = cpuInfo.VCacheCcdIndex === c ? `CCD${c} (V-Cache 🔋)` : `CCD${c}`;
+      const display = allSame
+        ? `<span class="co-pill ${pillClass(vals[0])}">${fmt(vals[0])}</span>`
+        : vals.map((v, i) => `<span class="co-pill ${pillClass(v)}" title="Core ${start+i}">${fmt(v)}</span>`).join(' ');
+      html += `<div class="live-co-row"><span class="live-co-row-label">${label}</span><span class="live-co-row-pills">${display}</span></div>`;
+    }
+    el.innerHTML = html;
+    return;
+  }
+  // per-core view: pills grouped by CCD
+  const ccds = {};
+  currentValues.forEach((v, i) => {
+    const ccd = cpuInfo.IsDualCcd ? Math.floor(i / cpuInfo.CoresPerCcd) : 0;
+    (ccds[ccd] = ccds[ccd] || []).push({ core: i, value: v });
+  });
+  let html = '';
+  Object.keys(ccds).sort((a, b) => +a - +b).forEach(ccd => {
+    const label = cpuInfo.VCacheCcdIndex === +ccd ? `CCD${ccd} (V-Cache 🔋)` : `CCD${ccd}`;
+    const pills = ccds[ccd].map(c => `<span class="co-pill ${pillClass(c.value)}" title="Core ${c.core}">C${c.core}: ${fmt(c.value)}</span>`).join('');
+    html += `<div class="muted small" style="margin-top:0.5rem">${label}</div><div class="co-pills">${pills}</div>`;
+  });
+  el.innerHTML = html;
+}
+
 async function loadCoValues() {
   if (!cpuInfo || !cpuInfo.SupportsCurveOptimizer) return;
   try {
@@ -932,6 +987,7 @@ const ProDash = (() => {
 
 let pollStatusInFlight = false;
 let lastObservedState = null;
+let liveCoRefreshCounter = 0;
 async function pollStatus() {
   // Guard against overlapping calls. setInterval fires every 1s, but if
   // the server is slow a second poll would start before the first
@@ -947,6 +1003,24 @@ async function pollStatus() {
       document.getElementById('status-content').innerHTML =
         `<p>Testing core <strong>${c.currentCore ?? '?'}</strong> · Iteration <strong>${c.iteration ?? '?'}/${c.iterationsTotal ?? '?'}</strong></p>
          <p>Errors so far: ${c.errors} · WHEA: ${c.wheaErrors} · Runtime: ${c.runtime || '—'}</p>`;
+    }
+    // Live CO panel: show only during testing. Refresh from the SMU
+    // every 3 polls (3 s) so Auto-Adjust and Smart Tune writes are
+    // visible. Using a side-effect-free fetcher (pollCurrentCo) instead
+    // of loadCoValues so the form's mode tab doesn't auto-switch under
+    // the user every 3 seconds.
+    const liveCard = document.getElementById('live-co-card');
+    if (s.state === 'TESTING') {
+      liveCard?.classList.remove('hidden');
+      liveCoRefreshCounter++;
+      if (liveCoRefreshCounter >= 3) {
+        liveCoRefreshCounter = 0;
+        await pollCurrentCo();
+      }
+      renderLiveCo();
+    } else {
+      liveCard?.classList.add('hidden');
+      liveCoRefreshCounter = 0;
     }
     if (s.state === 'REPORTING') {
       // Only fetch + rebuild the report on the *transition* into
@@ -1095,6 +1169,13 @@ async function loadHelpContent() {
 
 // Event delegation
 document.addEventListener('click', async e => {
+  if (e.target.classList && e.target.classList.contains('live-co-tab')) {
+    document.querySelectorAll('.live-co-tab').forEach(t => t.classList.remove('active'));
+    e.target.classList.add('active');
+    liveCoView = e.target.dataset.view;
+    renderLiveCo();
+    return;
+  }
   if (e.target.classList && e.target.classList.contains('tab')) {
     document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
     e.target.classList.add('active');

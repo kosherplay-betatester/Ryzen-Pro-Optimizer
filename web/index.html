@@ -315,6 +315,24 @@
     </div>
   </section>
 
+  <!-- Live Curve Optimizer panel: shows the SMU's actual per-core CO
+       values during a tune, refreshed every 3 polls. Three view tabs:
+       Summary (all-cores / per-CCD synopsis), Per-CCD (one row per CCD),
+       Per-core (pill chips). Visible only while state === TESTING. -->
+  <section class="card hidden" id="live-co-card">
+    <div class="live-co-header">
+      <h2>🎯 Live Curve Optimizer <span class="live-co-pulse" title="Reading every 3 seconds">●</span></h2>
+      <span class="muted small">read from SMU · updates every 3 s</span>
+    </div>
+    <p class="muted small">What the chip is running with <em>right now</em> — useful while Auto-Adjust or Smart Tune is changing things. Not what's in BIOS; SMU values until next reboot.</p>
+    <div class="tabs">
+      <button class="live-co-tab active" data-view="summary">Summary</button>
+      <button class="live-co-tab" data-view="per-ccd">Per-CCD</button>
+      <button class="live-co-tab" data-view="per-core">Per-core</button>
+    </div>
+    <div id="live-co-content" class="muted small">Waiting for first read…</div>
+  </section>
+
   <section class="card hidden" id="status-card">
     <h2>3. Live Status</h2>
     <div id="status-content"></div>
