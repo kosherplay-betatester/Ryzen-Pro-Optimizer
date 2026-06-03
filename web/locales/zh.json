@@ -88,5 +88,58 @@
   "toasts.applied_verified": "已应用 ✓ (已验证)",
   "toasts.reverted": "已恢复到启动值",
   "toasts.resumed": "智能调整已恢复",
-  "toasts.discarded": "已放弃"
+  "toasts.discarded": "已放弃",
+
+  "disclaimer.title": "调整前请阅读",
+  "disclaimer.accept": "我了解风险 · 继续",
+  "disclaimer.decline": "关闭标签页",
+  "disclaimer.dont_show": "不再在此浏览器显示(可在设置中重置)",
+
+  "apply_confirm.title": "应用这些 Curve Optimizer 设置?",
+  "apply_confirm.lead": "即将向 SMU 写入以下偏移量。先保存为配置文件可以让你稍后回滚到此精确配置。",
+  "apply_confirm.save_apply": "📸 保存配置并应用",
+  "apply_confirm.apply_only": "仅应用",
+  "apply_confirm.cancel": "取消",
+
+  "theater.waiting": "等待首次探测…",
+  "theater.narrative": "叙述",
+  "theater.autoscroll": "自动滚动",
+  "theater.overall": "总进度",
+  "theater.eta": "ETA",
+
+  "pro.stat.pkg_temp": "封装温度",
+  "pro.stat.pkg_power": "封装功率",
+  "pro.stat.avg_clock": "平均时钟",
+  "pro.stat.avg_vid": "平均 VID",
+  "pro.stat.hottest_core": "最热核心",
+  "pro.stat.avg_load": "平均负载",
+  "pro.min": "最低",
+  "pro.avg": "平均",
+  "pro.max": "最高",
+  "pro.samples": "样本",
+  "pro.chart.per_core_clock": "每核心时钟 (MHz)",
+  "pro.chart.per_core_voltage": "每核心电压 (V)",
+  "pro.chart.temperature": "温度 (°C)",
+  "pro.chart.package_power": "封装功率 (W)",
+  "pro.chart.boost_map": "Boost 图 — 电压 × 时钟(每核心散点,当前快照)",
+  "pro.chart.hint_toggle": "点击切换 · shift+点击单独显示",
+
+  "labels.stress_test_short": "压力测试:",
+  "labels.cycles_short": "循环次数:",
+
+  "desc.smart_tune_hint": "智能自动调整使用二分查找 + 遥测 + 崩溃历史。查看调整剧院获取实时进度,查看调整结果卡片获取每核心结论。",
+  "desc.live_co_what": "芯片现在正在运行的值 — 在自动调整改变东西时很有用。不是 BIOS 中的值;SMU 值会保持到下次重启。",
+  "desc.safety_intro": "超过即中止自动调整的硬性限制。结合 WHEA Bodyguard,可防止远程会话可能掩盖的静默滑向 BSOD。",
+  "desc.shutdown_intro": "选择什么应该停止服务。服务器终端窗口(Ctrl+C 或关闭 cmd 窗口)始终停止它 — 这是主开关。",
+  "desc.settings_saved": "设置保存在浏览器中 (localStorage) — 重载后仍然存在。",
+
+  "settings.tabclose_main": "关闭浏览器标签/窗口停止服务",
+  "settings.escshutdown_main": "Esc 键停止服务(除了重置 CO 之外)",
+  "settings.whea_abort_main": "WHEA 警告时自动中止",
+  "settings.audio_alert_main": "WHEA / 安全中止时的声音警报",
+  "settings.show_disclaimer": "⚠ 再次显示风险声明",
+  "settings.show_disclaimer_title": "重新显示启动风险声明",
+
+  "modes.manual_info_html": "<strong>手动测试</strong> — 通过所选压力测试运行当前的 CO 值。如果任何核心出错,报告会告诉你是哪个,并建议回退多少。你掌握主动权。",
+  "modes.auto_info_html": "<strong>自动调整(自动调优) · 每核心调整</strong> — CoreCycler 运行压力测试,并在某核心出错时<em>自动</em>提升该核心的 CO 偏移(更少负值),然后重新测试。让每个核心走到其个别稳定边缘。设置它最多可以后退多远(最大值)以及它步进的激进程度(增量)。"
 }

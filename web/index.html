@@ -36,10 +36,10 @@
 <div id="disclaimer-overlay" class="disclaimer-overlay hidden">
   <div class="disclaimer-card">
     <div class="disclaimer-icon">⚠</div>
-    <h2>Read this before you tune</h2>
-    <p class="disclaimer-lead">
+    <h2 data-i18n="disclaimer.title">Read this before you tune</h2>
+    <p class="disclaimer-lead" data-i18n="disclaimer.lead">
       Ryzen Pro Optimizer writes to your CPU's SMU registers and runs intense stress tests.
-      These actions <strong>can crash your system</strong>. By continuing, you accept the
+      These actions can crash your system. By continuing, you accept the
       following risks:
     </p>
     <ul class="disclaimer-risks">
@@ -50,22 +50,22 @@
       <li><strong>WHEA = stop.</strong> A WHEA event during stress testing is a hardware-corrected error. Back off the CO offset immediately — don't keep pushing.</li>
       <li><strong>Settings are temporary.</strong> CO writes live in SMU registers until next reboot. To make a profile permanent, write it to BIOS yourself.</li>
     </ul>
-    <p class="disclaimer-safety">
-      Your safety nets: the <kbd>Esc</kbd> panic-reset key, the always-visible <strong>RESET CO</strong> button,
+    <p class="disclaimer-safety" data-i18n="disclaimer.safety_nets">
+      Your safety nets: the Esc panic-reset key, the always-visible RESET CO button,
       the Safety Guard (auto-aborts on temp/voltage/WHEA breaches), the panic-revert breadcrumb
       (survives BSODs so the next boot can roll back), and BIOS — which always wins on next power cycle.
     </p>
-    <p class="disclaimer-lead">
-      <strong>Use at your own risk.</strong> The authors and contributors are not liable for any
+    <p class="disclaimer-lead" data-i18n="disclaimer.use_at_risk">
+      Use at your own risk. The authors and contributors are not liable for any
       damage, data loss, or downtime. If you're not comfortable with that, close this tab now.
     </p>
     <div class="actions">
-      <button id="disclaimer-accept" class="primary">I understand the risks · Continue</button>
-      <button id="disclaimer-decline" class="secondary">Close tab</button>
+      <button id="disclaimer-accept" class="primary" data-i18n="disclaimer.accept">I understand the risks · Continue</button>
+      <button id="disclaimer-decline" class="secondary" data-i18n="disclaimer.decline">Close tab</button>
     </div>
     <label class="disclaimer-remember">
       <input type="checkbox" id="disclaimer-dont-show">
-      Don't show this again on this browser (you can clear it via Settings)
+      <span data-i18n="disclaimer.dont_show">Don't show this again on this browser (you can clear it via Settings)</span>
     </label>
   </div>
 </div>
@@ -75,13 +75,13 @@
 <div id="apply-confirm-overlay" class="modal-overlay hidden">
   <div id="apply-confirm-backdrop" class="modal-backdrop"></div>
   <div class="modal-card">
-    <h3>Apply these Curve Optimizer settings?</h3>
-    <p class="muted small">About to write the following offsets to the SMU. Saving them as a profile first lets you roll back to this exact configuration later.</p>
+    <h3 data-i18n="apply_confirm.title">Apply these Curve Optimizer settings?</h3>
+    <p class="muted small" data-i18n="apply_confirm.lead">About to write the following offsets to the SMU. Saving them as a profile first lets you roll back to this exact configuration later.</p>
     <div id="apply-confirm-summary" class="apply-summary"></div>
     <div class="actions" style="margin-top:1rem">
-      <button id="apply-confirm-save" class="primary" title="Auto-save then apply">📸 Save profile &amp; apply</button>
-      <button id="apply-confirm-apply" class="secondary" title="Apply without saving">Apply only</button>
-      <button id="apply-confirm-cancel" class="secondary" title="Don't apply">Cancel</button>
+      <button id="apply-confirm-save" class="primary" title="Auto-save then apply" data-i18n="apply_confirm.save_apply">📸 Save profile &amp; apply</button>
+      <button id="apply-confirm-apply" class="secondary" title="Apply without saving" data-i18n="apply_confirm.apply_only">Apply only</button>
+      <button id="apply-confirm-cancel" class="secondary" title="Don't apply" data-i18n="apply_confirm.cancel">Cancel</button>
     </div>
   </div>
 </div>
@@ -132,22 +132,22 @@
 
     <div class="theater-progress">
       <div class="progress-row">
-        <span class="progress-label">Overall</span>
+        <span class="progress-label" data-i18n="theater.overall">Overall</span>
         <div class="progress-bar"><div class="progress-fill" id="theater-overall-fill"></div></div>
         <span class="progress-pct" id="theater-overall-pct">0%</span>
         <span class="progress-eta">ETA <span id="theater-eta">—</span></span>
       </div>
     </div>
 
-    <div class="theater-currently" id="theater-currently">Waiting for first probe…</div>
+    <div class="theater-currently" id="theater-currently" data-i18n="theater.waiting">Waiting for first probe…</div>
 
     <div class="theater-scopes" id="theater-scopes"></div>
 
     <div class="theater-narrative">
       <div class="narrative-header">
-        Narrative
+        <span data-i18n="theater.narrative">Narrative</span>
         <label class="muted small">
-          <input type="checkbox" id="narrative-autoscroll" checked> auto-scroll
+          <input type="checkbox" id="narrative-autoscroll" checked> <span data-i18n="theater.autoscroll">auto-scroll</span>
         </label>
       </div>
       <div id="narrative-log"></div>
@@ -191,33 +191,33 @@
     </div>
 
     <div class="stats-grid" id="stats-grid">
-      <div class="stat-tile"><div class="stat-label">Pkg Temp</div><div class="stat-value" id="st-temp">—</div><div class="stat-extra">min <span id="st-temp-min">—</span> · avg <span id="st-temp-avg">—</span> · <span class="stat-peak">max <span id="st-temp-max">—</span></span></div></div>
-      <div class="stat-tile"><div class="stat-label">Pkg Power</div><div class="stat-value" id="st-pwr">—</div><div class="stat-extra">min <span id="st-pwr-min">—</span> · avg <span id="st-pwr-avg">—</span> · <span class="stat-peak">max <span id="st-pwr-max">—</span></span></div></div>
-      <div class="stat-tile"><div class="stat-label">Avg Clock</div><div class="stat-value" id="st-clk">—</div><div class="stat-extra">min <span id="st-clk-min">—</span> · avg <span id="st-clk-avg">—</span> · <span class="stat-peak">max <span id="st-clk-max">—</span></span></div></div>
-      <div class="stat-tile"><div class="stat-label">Avg VID</div><div class="stat-value" id="st-vid">—</div><div class="stat-extra">min <span id="st-vid-min">—</span> · avg <span id="st-vid-avg">—</span> · <span class="stat-peak">max <span id="st-vid-max">—</span></span></div></div>
-      <div class="stat-tile"><div class="stat-label">Hottest Core</div><div class="stat-value" id="st-hot">—</div><div class="stat-extra"><span id="st-hot-core">—</span></div></div>
-      <div class="stat-tile"><div class="stat-label">Avg Load</div><div class="stat-value" id="st-load">—</div><div class="stat-extra">samples <span id="st-samples">0</span></div></div>
+      <div class="stat-tile"><div class="stat-label" data-i18n="pro.stat.pkg_temp">Pkg Temp</div><div class="stat-value" id="st-temp">—</div><div class="stat-extra"><span data-i18n="pro.min">min</span> <span id="st-temp-min">—</span> · <span data-i18n="pro.avg">avg</span> <span id="st-temp-avg">—</span> · <span class="stat-peak"><span data-i18n="pro.max">max</span> <span id="st-temp-max">—</span></span></div></div>
+      <div class="stat-tile"><div class="stat-label" data-i18n="pro.stat.pkg_power">Pkg Power</div><div class="stat-value" id="st-pwr">—</div><div class="stat-extra"><span data-i18n="pro.min">min</span> <span id="st-pwr-min">—</span> · <span data-i18n="pro.avg">avg</span> <span id="st-pwr-avg">—</span> · <span class="stat-peak"><span data-i18n="pro.max">max</span> <span id="st-pwr-max">—</span></span></div></div>
+      <div class="stat-tile"><div class="stat-label" data-i18n="pro.stat.avg_clock">Avg Clock</div><div class="stat-value" id="st-clk">—</div><div class="stat-extra"><span data-i18n="pro.min">min</span> <span id="st-clk-min">—</span> · <span data-i18n="pro.avg">avg</span> <span id="st-clk-avg">—</span> · <span class="stat-peak"><span data-i18n="pro.max">max</span> <span id="st-clk-max">—</span></span></div></div>
+      <div class="stat-tile"><div class="stat-label" data-i18n="pro.stat.avg_vid">Avg VID</div><div class="stat-value" id="st-vid">—</div><div class="stat-extra"><span data-i18n="pro.min">min</span> <span id="st-vid-min">—</span> · <span data-i18n="pro.avg">avg</span> <span id="st-vid-avg">—</span> · <span class="stat-peak"><span data-i18n="pro.max">max</span> <span id="st-vid-max">—</span></span></div></div>
+      <div class="stat-tile"><div class="stat-label" data-i18n="pro.stat.hottest_core">Hottest Core</div><div class="stat-value" id="st-hot">—</div><div class="stat-extra"><span id="st-hot-core">—</span></div></div>
+      <div class="stat-tile"><div class="stat-label" data-i18n="pro.stat.avg_load">Avg Load</div><div class="stat-value" id="st-load">—</div><div class="stat-extra"><span data-i18n="pro.samples">samples</span> <span id="st-samples">0</span></div></div>
     </div>
 
     <div class="chart-grid">
       <div class="chart-box chart-wide chart-with-legend">
-        <div class="chart-title"><span>Per-core clock (MHz)</span><span class="chart-hint">click to toggle · shift+click to solo</span></div>
+        <div class="chart-title"><span data-i18n="pro.chart.per_core_clock">Per-core clock (MHz)</span><span class="chart-hint" data-i18n="pro.chart.hint_toggle">click to toggle · shift+click to solo</span></div>
         <canvas id="chart-clock"></canvas>
       </div>
       <div class="chart-box chart-wide chart-with-legend">
-        <div class="chart-title"><span>Per-core voltage (V)</span><span class="chart-hint">click to toggle · shift+click to solo</span></div>
+        <div class="chart-title"><span data-i18n="pro.chart.per_core_voltage">Per-core voltage (V)</span><span class="chart-hint" data-i18n="pro.chart.hint_toggle">click to toggle · shift+click to solo</span></div>
         <canvas id="chart-vid"></canvas>
       </div>
       <div class="chart-box">
-        <div class="chart-title"><span>Temperature (°C)</span><span class="chart-hint">click to toggle · shift+click to solo</span></div>
+        <div class="chart-title"><span data-i18n="pro.chart.temperature">Temperature (°C)</span><span class="chart-hint" data-i18n="pro.chart.hint_toggle">click to toggle · shift+click to solo</span></div>
         <canvas id="chart-temp"></canvas>
       </div>
       <div class="chart-box">
-        <div class="chart-title">Package power (W)</div>
+        <div class="chart-title" data-i18n="pro.chart.package_power">Package power (W)</div>
         <canvas id="chart-power"></canvas>
       </div>
       <div class="chart-box chart-wide">
-        <div class="chart-title">Boost map — voltage × clock (per-core scatter, current snapshot)</div>
+        <div class="chart-title" data-i18n="pro.chart.boost_map">Boost map — voltage × clock (per-core scatter, current snapshot)</div>
         <canvas id="chart-vf"></canvas>
       </div>
     </div>
@@ -285,11 +285,11 @@
       <label class="inline-radio"><input type="radio" name="testMode" value="smart"> <span data-i18n="modes.smart">Smart Auto-Adjust (Pro)</span></label>
     </div>
 
-    <div id="mode-info-manual" class="info-box">
+    <div id="mode-info-manual" class="info-box" data-i18n-html="modes.manual_info_html">
       <strong>Manual test</strong> — runs your current CO values through the selected stress test. If any core errors, the report tells you which one and suggests how much to dial back. You stay in the driver's seat.
     </div>
 
-    <div id="mode-info-auto" class="info-box hidden">
+    <div id="mode-info-auto" class="info-box hidden" data-i18n-html="modes.auto_info_html">
       <strong>Auto-Adjust (autotuning) · per-core tuning</strong> — CoreCycler runs the stress test and <em>automatically</em> bumps each core's CO offset upward (less negative) whenever that core errors, then re-tests it. Walks each core to its individual stable edge. Set how far it can back off (Max value) and how aggressively it steps (Increment).
       <p class="muted small" style="margin:0.4rem 0 0 0">📸 Before this run starts, your current CO values are auto-saved as a profile named <code>pre-auto-adjust-…</code> in the Profiles section — load it back if you want to undo.</p>
       <ul class="info-list">
@@ -302,24 +302,24 @@
     </div>
 
     <div class="co-input">
-      <label>Stress test:</label>
+      <label data-i18n="labels.stress_test_short">Stress test:</label>
       <select id="test-mode">
         <option value="SSE">Prime95 SSE (recommended for CO)</option>
         <option value="AVX2">Prime95 AVX2</option>
         <option value="AVX512">Prime95 AVX512</option>
       </select>
     </div>
-    <div class="co-input"><label>Cycles:</label><input type="number" id="iterations" value="1" min="1" max="10000"></div>
-    <p class="muted small">Default 1 cycle. <strong>3+ cycles recommended</strong> for confident stability. Auto-Adjust typically benefits from longer runs (10+) so each core gets multiple chances.</p>
+    <div class="co-input"><label data-i18n="labels.cycles_short">Cycles:</label><input type="number" id="iterations" value="1" min="1" max="10000"></div>
+    <p class="muted small" data-i18n="desc.test_cycles_hint">Default 1 cycle. 3+ cycles recommended for confident stability. Auto-Adjust typically benefits from longer runs (10+) so each core gets multiple chances.</p>
 
     <div id="auto-options" class="hidden">
-      <div class="co-input"><label>Max value (least-negative ceiling):</label><input type="number" id="auto-max" value="0" min="-50" max="50"></div>
-      <div class="co-input"><label>Increment by (points per error):</label><input type="number" id="auto-inc" value="1" min="1" max="5"></div>
+      <div class="co-input"><label data-i18n="labels.max_value">Max value (least-negative ceiling):</label><input type="number" id="auto-max" value="0" min="-50" max="50"></div>
+      <div class="co-input"><label data-i18n="labels.increment_by">Increment by (points per error):</label><input type="number" id="auto-inc" value="1" min="1" max="5"></div>
     </div>
 
     <div id="smart-options" class="hidden">
       <div class="co-input">
-        <label>Goal mode:</label>
+        <label data-i18n="labels.goal_mode">Goal mode:</label>
         <select id="smart-mode">
           <option value="daily-driver" selected>Daily Driver — per-CCD · 30–60 min, safe daily values</option>
           <option value="max-stable">Max Stable — per-CCD + per-core · 3–6 h, deepest verified offsets</option>
@@ -329,13 +329,13 @@
         </select>
       </div>
       <div class="co-input apply-mode-row">
-        <label>When tune finishes:</label>
+        <label data-i18n="labels.when_tune_finishes">When tune finishes:</label>
         <div class="apply-mode-choices">
           <label class="inline-radio"><input type="radio" name="applyMode" value="report" checked> Show report (recommended) — revert CO to launch values; review per-core table; apply explicitly</label>
           <label class="inline-radio"><input type="radio" name="applyMode" value="live"> Apply as we go — keep the SMU at whatever the tune ended at</label>
         </div>
       </div>
-      <p class="muted small">Smart Auto-Adjust uses bisection + telemetry + crash history. See the Tune Theater for live progress and the Tune Results card for the per-core verdict.</p>
+      <p class="muted small" data-i18n="desc.smart_tune_hint">Smart Auto-Adjust uses bisection + telemetry + crash history. See the Tune Theater for live progress and the Tune Results card for the per-core verdict.</p>
     </div>
 
     <div id="mode-info-smart" class="info-box hidden">
@@ -367,7 +367,7 @@
       <h2><span data-i18n="section.live_co">🎯 Live Curve Optimizer</span> <span class="live-co-pulse" title="Reading every 3 seconds">●</span></h2>
       <span class="muted small" data-i18n="live_co.subtitle">read from SMU · updates every 3 s</span>
     </div>
-    <p class="muted small">What the chip is running with <em>right now</em> — useful while Auto-Adjust or Smart Tune is changing things. Not what's in BIOS; SMU values until next reboot.</p>
+    <p class="muted small" data-i18n="desc.live_co_what">What the chip is running with right now — useful while Auto-Adjust or Smart Tune is changing things. Not what's in BIOS; SMU values until next reboot.</p>
     <div class="tabs">
       <button class="live-co-tab active" data-view="summary" data-i18n="tabs.summary">Summary</button>
       <button class="live-co-tab" data-view="per-ccd" data-i18n="tabs.per_ccd">Per-CCD</button>
@@ -393,37 +393,37 @@
 
   <section class="card" id="safety-card">
     <h2 data-i18n="section.safety_guards">🛡 Safety Guards (auto-tune)</h2>
-    <p class="muted small">Hard limits that abort Auto-Adjust the instant they're exceeded. Combined with the WHEA Bodyguard, these prevent the kind of silent slide into BSOD that a remote session can leave you blind to.</p>
-    <div class="co-input"><label>Max core temperature (°C):</label><input type="number" id="safety-max-temp" min="50" max="105" value="95"><span class="muted small">(7950X3D thermal throttle ~89°C, hard limit 95°C)</span></div>
-    <div class="co-input"><label>Max core VID (V):</label><input type="number" id="safety-max-vid" min="0.9" max="1.55" step="0.01" value="1.45"><span class="muted small">(AMD spec ≤1.45V for Zen 4/5 daily)</span></div>
+    <p class="muted small" data-i18n="desc.safety_intro">Hard limits that abort Auto-Adjust the instant they're exceeded. Combined with the WHEA Bodyguard, these prevent the kind of silent slide into BSOD that a remote session can leave you blind to.</p>
+    <div class="co-input"><label data-i18n="labels.max_temp">Max core temperature (°C):</label><input type="number" id="safety-max-temp" min="50" max="105" value="95"><span class="muted small">(7950X3D thermal throttle ~89°C, hard limit 95°C)</span></div>
+    <div class="co-input"><label data-i18n="labels.max_vid">Max core VID (V):</label><input type="number" id="safety-max-vid" min="0.9" max="1.55" step="0.01" value="1.45"><span class="muted small">(AMD spec ≤1.45V for Zen 4/5 daily)</span></div>
     <label class="setting-row">
       <input type="checkbox" id="safety-whea-abort" checked>
-      <span><strong>Auto-abort on WHEA warning</strong><br>
-      <span class="muted small">When a WHEA hardware-error event fires during Auto-Adjust, immediately stop, step back one increment on the offending core, and re-snapshot. Default on.</span></span>
+      <span><strong data-i18n="settings.whea_abort_main">Auto-abort on WHEA warning</strong><br>
+      <span class="muted small" data-i18n="desc.whea_abort">When a WHEA hardware-error event fires during Auto-Adjust, immediately stop, step back one increment on the offending core, and re-snapshot. Default on.</span></span>
     </label>
     <label class="setting-row">
       <input type="checkbox" id="safety-audio-alert" checked>
-      <span><strong>Audio alert on WHEA / safety abort</strong><br>
-      <span class="muted small">Plays a short browser beep when something dangerous happens — useful if you're away from the desk during a long run.</span></span>
+      <span><strong data-i18n="settings.audio_alert_main">Audio alert on WHEA / safety abort</strong><br>
+      <span class="muted small" data-i18n="desc.audio_alert">Plays a short browser beep when something dangerous happens — useful if you're away from the desk during a long run.</span></span>
     </label>
   </section>
 
   <section class="card" id="settings-card">
     <h2 data-i18n="section.shutdown_behavior">⚙ Shutdown behavior</h2>
-    <p class="muted small">Pick what should stop the service. The server's terminal window (Ctrl+C or closing the cmd window) <strong>always</strong> stops it — that's the master switch.</p>
+    <p class="muted small" data-i18n="desc.shutdown_intro">Pick what should stop the service. The server's terminal window (Ctrl+C or closing the cmd window) always stops it — that's the master switch.</p>
     <label class="setting-row">
       <input type="checkbox" id="opt-tabclose">
-      <span><strong>Closing the browser tab/window stops the service</strong><br>
-      <span class="muted small">⚠ <strong>Disabled by default.</strong> Chrome's memory-saver and RDP disconnects look like a closed tab and would otherwise kill the service mid-test. When enabled, the server reverts CO to launch values and shuts down after a 3-minute heartbeat silence. Recommended only on a dedicated tuning bench where you trust the browser will stay foregrounded.</span></span>
+      <span><strong data-i18n="settings.tabclose_main">Closing the browser tab/window stops the service</strong><br>
+      <span class="muted small" data-i18n="desc.tabclose_warn">⚠ Disabled by default. Chrome's memory-saver and RDP disconnects look like a closed tab and would otherwise kill the service mid-test. When enabled, the server reverts CO to launch values and shuts down after a 3-minute heartbeat silence. Recommended only on a dedicated tuning bench where you trust the browser will stay foregrounded.</span></span>
     </label>
     <label class="setting-row">
       <input type="checkbox" id="opt-escshutdown">
-      <span><strong>Esc key stops the service (in addition to resetting CO)</strong><br>
-      <span class="muted small">When enabled, Esc still resets CO to 0 instantly, but also tears down the server. When disabled (default), Esc is just a panic reset and the service stays up.</span></span>
+      <span><strong data-i18n="settings.escshutdown_main">Esc key stops the service (in addition to resetting CO)</strong><br>
+      <span class="muted small" data-i18n="desc.escshutdown">When enabled, Esc still resets CO to 0 instantly, but also tears down the server. When disabled (default), Esc is just a panic reset and the service stays up.</span></span>
     </label>
-    <p class="muted small">Settings are saved in your browser (localStorage) — they survive reloads.</p>
+    <p class="muted small" data-i18n="desc.settings_saved">Settings are saved in your browser (localStorage) — they survive reloads.</p>
     <div class="actions" style="margin-top:0.8rem">
-      <button id="show-disclaimer-again" class="secondary" title="Re-display the startup risk disclaimer">⚠ Show risk disclaimer again</button>
+      <button id="show-disclaimer-again" class="secondary" data-i18n-attr="title|settings.show_disclaimer_title" title="Re-display the startup risk disclaimer" data-i18n="settings.show_disclaimer">⚠ Show risk disclaimer again</button>
     </div>
   </section>
 </main>

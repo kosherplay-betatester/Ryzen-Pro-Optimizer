@@ -88,5 +88,58 @@
   "toasts.applied_verified": "適用しました ✓ (検証済)",
   "toasts.reverted": "起動時の値に戻しました",
   "toasts.resumed": "スマートチューンを再開しました",
-  "toasts.discarded": "破棄しました"
+  "toasts.discarded": "破棄しました",
+
+  "disclaimer.title": "チューニング前にお読みください",
+  "disclaimer.accept": "リスクを理解しました · 続行",
+  "disclaimer.decline": "タブを閉じる",
+  "disclaimer.dont_show": "このブラウザで再表示しない(設定からリセット可能)",
+
+  "apply_confirm.title": "これらの Curve Optimizer 設定を適用しますか?",
+  "apply_confirm.lead": "SMU に以下のオフセットを書き込もうとしています。プロファイルとして保存しておくと、後でこの正確な設定に戻せます。",
+  "apply_confirm.save_apply": "📸 プロファイル保存して適用",
+  "apply_confirm.apply_only": "適用のみ",
+  "apply_confirm.cancel": "キャンセル",
+
+  "theater.waiting": "最初のプローブを待機中…",
+  "theater.narrative": "ナラティブ",
+  "theater.autoscroll": "自動スクロール",
+  "theater.overall": "全体",
+  "theater.eta": "ETA",
+
+  "pro.stat.pkg_temp": "パッケージ温度",
+  "pro.stat.pkg_power": "パッケージ電力",
+  "pro.stat.avg_clock": "平均クロック",
+  "pro.stat.avg_vid": "平均 VID",
+  "pro.stat.hottest_core": "最高温コア",
+  "pro.stat.avg_load": "平均負荷",
+  "pro.min": "最小",
+  "pro.avg": "平均",
+  "pro.max": "最大",
+  "pro.samples": "サンプル",
+  "pro.chart.per_core_clock": "コア別クロック (MHz)",
+  "pro.chart.per_core_voltage": "コア別電圧 (V)",
+  "pro.chart.temperature": "温度 (°C)",
+  "pro.chart.package_power": "パッケージ電力 (W)",
+  "pro.chart.boost_map": "ブースト マップ — 電圧 × クロック(コア別散布、現在のスナップショット)",
+  "pro.chart.hint_toggle": "クリックで切替 · shift+クリックで単独表示",
+
+  "labels.stress_test_short": "ストレステスト:",
+  "labels.cycles_short": "サイクル:",
+
+  "desc.smart_tune_hint": "スマート自動調整は二分探索 + テレメトリ + クラッシュ履歴を使用します。ライブ進捗はチューン シアター、コア別の判定はチューン結果カードを参照。",
+  "desc.live_co_what": "チップが今実行している値 — 自動調整が変更している間に有用。BIOS にあるものではなく、次の再起動までの SMU 値です。",
+  "desc.safety_intro": "超えた瞬間に自動調整を中止する厳しい制限。WHEA Bodyguard と組み合わせることで、リモートセッションで見落としかねない BSOD への静かな滑落を防ぎます。",
+  "desc.shutdown_intro": "サービスを停止するものを選択してください。サーバーのターミナルウィンドウ(Ctrl+C または cmd ウィンドウを閉じる)は常に停止します — これはマスタースイッチです。",
+  "desc.settings_saved": "設定はブラウザに保存されます (localStorage) — 再読込でも維持されます。",
+
+  "settings.tabclose_main": "ブラウザのタブ/ウィンドウを閉じるとサービスを停止",
+  "settings.escshutdown_main": "Esc キーでサービス停止(CO リセットに加えて)",
+  "settings.whea_abort_main": "WHEA 警告時に自動中止",
+  "settings.audio_alert_main": "WHEA / 安全中止時のオーディオアラート",
+  "settings.show_disclaimer": "⚠ リスク免責事項を再表示",
+  "settings.show_disclaimer_title": "起動時のリスク免責事項を再表示",
+
+  "modes.manual_info_html": "<strong>手動テスト</strong> — 選択したストレステストを通して現在の CO 値を実行します。コアがエラーを出した場合、レポートはどれかを伝え、どの程度戻すかを提案します。あなたが主導権を持ち続けます。",
+  "modes.auto_info_html": "<strong>自動調整 · コア別</strong> — CoreCycler がストレステストを実行し、コアがエラーを出すたびにそのコアの CO オフセットを<em>自動的に</em>引き上げ(負の値を弱め)、再テストします。各コアを個別の安定エッジまで歩かせます。後退できる範囲(最大値)とステップの積極性(増分)を設定してください。"
 }

@@ -88,5 +88,58 @@
   "toasts.applied_verified": "הוחל ✓ (אומת)",
   "toasts.reverted": "הוחזר לערכי הפעלה",
   "toasts.resumed": "הכוונון החכם חודש",
-  "toasts.discarded": "בוטל"
+  "toasts.discarded": "בוטל",
+
+  "disclaimer.title": "קרא לפני שאתה מכוונן",
+  "disclaimer.accept": "אני מבין את הסיכונים · המשך",
+  "disclaimer.decline": "סגור את הכרטיסייה",
+  "disclaimer.dont_show": "אל תציג שוב בדפדפן זה (אפשר לאפס דרך הגדרות)",
+
+  "apply_confirm.title": "להחיל את הגדרות Curve Optimizer האלו?",
+  "apply_confirm.lead": "עומד לכתוב את ההיסטים הבאים ל-SMU. שמירה כפרופיל מאפשרת לחזור לתצורה המדויקת הזו מאוחר יותר.",
+  "apply_confirm.save_apply": "📸 שמור פרופיל והחל",
+  "apply_confirm.apply_only": "החל בלבד",
+  "apply_confirm.cancel": "ביטול",
+
+  "theater.waiting": "ממתין למדידה הראשונה…",
+  "theater.narrative": "נרטיב",
+  "theater.autoscroll": "גלילה אוטומטית",
+  "theater.overall": "כללי",
+  "theater.eta": "ETA",
+
+  "pro.stat.pkg_temp": "טמפ' חבילה",
+  "pro.stat.pkg_power": "צריכת חבילה",
+  "pro.stat.avg_clock": "שעון ממוצע",
+  "pro.stat.avg_vid": "VID ממוצע",
+  "pro.stat.hottest_core": "הליבה החמה ביותר",
+  "pro.stat.avg_load": "עומס ממוצע",
+  "pro.min": "מינ'",
+  "pro.avg": "ממוצע",
+  "pro.max": "מקס'",
+  "pro.samples": "דגימות",
+  "pro.chart.per_core_clock": "שעון לפי ליבה (MHz)",
+  "pro.chart.per_core_voltage": "מתח לפי ליבה (V)",
+  "pro.chart.temperature": "טמפרטורה (°C)",
+  "pro.chart.package_power": "צריכת חבילה (W)",
+  "pro.chart.boost_map": "מפת boost — מתח × שעון (פיזור לפי ליבה, תמונת מצב נוכחית)",
+  "pro.chart.hint_toggle": "קליק לבחירה · shift+קליק לבידוד",
+
+  "labels.stress_test_short": "מבחן עומס:",
+  "labels.cycles_short": "מחזורים:",
+
+  "desc.smart_tune_hint": "הכוונון החכם משתמש בבדיקה דו-קוטבית + טלמטריה + היסטוריית קריסות. ראה את תיאטרון הכוונון לקצב חי ואת כרטיס תוצאות הכוונון לפסיקה לכל ליבה.",
+  "desc.live_co_what": "מה שהשבב מריץ כרגע — שימושי בזמן שכוונון אוטומטי משנה דברים. לא מה שב-BIOS; ערכי SMU עד לאתחול הבא.",
+  "desc.safety_intro": "מגבלות קשיחות שמבטלות כוונון אוטומטי ברגע שהן מופרות. יחד עם ה-WHEA Bodyguard, הן מונעות את ההחלקה השקטה ל-BSOD שסשן מרוחק עלול להסתיר.",
+  "desc.shutdown_intro": "בחר מה צריך לעצור את השירות. חלון הטרמינל של השרת (Ctrl+C או סגירת חלון cmd) תמיד עוצר אותו — זהו המתג הראשי.",
+  "desc.settings_saved": "ההגדרות נשמרות בדפדפן (localStorage) — שורדות רענונים.",
+
+  "settings.tabclose_main": "סגירת לשונית/חלון הדפדפן עוצרת את השירות",
+  "settings.escshutdown_main": "מקש Esc עוצר את השירות (בנוסף לאיפוס CO)",
+  "settings.whea_abort_main": "ביטול אוטומטי בעת אזהרת WHEA",
+  "settings.audio_alert_main": "התרעה קולית על WHEA / ביטול בטיחותי",
+  "settings.show_disclaimer": "⚠ הצג שוב את אזהרת הסיכונים",
+  "settings.show_disclaimer_title": "הצג שוב את אזהרת הסיכונים מההפעלה",
+
+  "modes.manual_info_html": "<strong>בדיקה ידנית</strong> — מריץ את ערכי ה-CO הנוכחיים שלך דרך מבחן העומס שנבחר. אם ליבה כלשהי שוגה, הדוח מציין איזו ומציע בכמה להחזיר. אתה נשאר בהגה.",
+  "modes.auto_info_html": "<strong>כוונון אוטומטי · לפי ליבה</strong> — CoreCycler מריץ את מבחן העומס ו<em>מעלה אוטומטית</em> את היסט ה-CO של כל ליבה (פחות שלילי) בכל פעם שאותה ליבה שוגה, ואז בודק שוב. הולך עם כל ליבה עד הקצה היציב שלה. הגדר עד כמה הוא יכול לסגת (ערך מקסימלי) ועד כמה אגרסיבית הוא צועד (שלב)."
 }

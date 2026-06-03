@@ -2046,6 +2046,11 @@ document.addEventListener('DOMContentLoaded', async () => {
     saveSettings();  // push current preferences to server on load
     await loadVersion();
     await loadCpu();
+    // Show Pro Dashboard and the per-core expanded telemetry grid by
+    // default, so the user lands on the full data view without having
+    // to click anything. They can still collapse either one.
+    ProDash.show();
+    document.getElementById('telemetry-expanded')?.classList.remove('hidden');
     await loadCoValues();
     await loadProfiles();
     await checkPanicRevert();

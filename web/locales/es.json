@@ -88,5 +88,58 @@
   "toasts.applied_verified": "Aplicado ✓ (verificado)",
   "toasts.reverted": "Revertido a valores de inicio",
   "toasts.resumed": "Autoajuste inteligente reanudado",
-  "toasts.discarded": "Descartado"
+  "toasts.discarded": "Descartado",
+
+  "disclaimer.title": "Lee esto antes de ajustar",
+  "disclaimer.accept": "Entiendo los riesgos · Continuar",
+  "disclaimer.decline": "Cerrar pestaña",
+  "disclaimer.dont_show": "No mostrar esto de nuevo en este navegador (puedes restablecerlo en Ajustes)",
+
+  "apply_confirm.title": "¿Aplicar estos ajustes de Curve Optimizer?",
+  "apply_confirm.lead": "A punto de escribir los siguientes offsets al SMU. Guardarlos como perfil te permite volver a esta configuración exacta más tarde.",
+  "apply_confirm.save_apply": "📸 Guardar perfil y aplicar",
+  "apply_confirm.apply_only": "Solo aplicar",
+  "apply_confirm.cancel": "Cancelar",
+
+  "theater.waiting": "Esperando primera sonda…",
+  "theater.narrative": "Narrativa",
+  "theater.autoscroll": "desplazamiento automático",
+  "theater.overall": "Global",
+  "theater.eta": "ETA",
+
+  "pro.stat.pkg_temp": "Temp paquete",
+  "pro.stat.pkg_power": "Potencia paquete",
+  "pro.stat.avg_clock": "Reloj prom.",
+  "pro.stat.avg_vid": "VID prom.",
+  "pro.stat.hottest_core": "Núcleo más caliente",
+  "pro.stat.avg_load": "Carga prom.",
+  "pro.min": "mín",
+  "pro.avg": "prom",
+  "pro.max": "máx",
+  "pro.samples": "muestras",
+  "pro.chart.per_core_clock": "Reloj por núcleo (MHz)",
+  "pro.chart.per_core_voltage": "Voltaje por núcleo (V)",
+  "pro.chart.temperature": "Temperatura (°C)",
+  "pro.chart.package_power": "Potencia paquete (W)",
+  "pro.chart.boost_map": "Mapa de boost — voltaje × reloj (dispersión por núcleo, instantánea actual)",
+  "pro.chart.hint_toggle": "clic para alternar · shift+clic para aislar",
+
+  "labels.stress_test_short": "Prueba de estrés:",
+  "labels.cycles_short": "Ciclos:",
+
+  "desc.smart_tune_hint": "El autoajuste inteligente usa bisección + telemetría + historial de cuelgues. Mira el Teatro de ajuste para el progreso en vivo y los Resultados del ajuste para el veredicto por núcleo.",
+  "desc.live_co_what": "Lo que el chip está ejecutando ahora mismo — útil mientras el autoajuste está cambiando cosas. No es lo que está en la BIOS; valores del SMU hasta el próximo reinicio.",
+  "desc.safety_intro": "Límites duros que abortan el autoajuste en el instante en que se exceden. Combinados con el WHEA Bodyguard, evitan el deslizamiento silencioso a BSOD que una sesión remota puede dejar ciega.",
+  "desc.shutdown_intro": "Elige qué debe detener el servicio. La ventana terminal del servidor (Ctrl+C o cerrar la ventana cmd) siempre lo detiene — es el interruptor maestro.",
+  "desc.settings_saved": "Los ajustes se guardan en tu navegador (localStorage) — sobreviven a recargas.",
+
+  "settings.tabclose_main": "Cerrar la pestaña/ventana del navegador detiene el servicio",
+  "settings.escshutdown_main": "La tecla Esc detiene el servicio (además de restablecer CO)",
+  "settings.whea_abort_main": "Autoabortar al recibir advertencia WHEA",
+  "settings.audio_alert_main": "Alerta sonora en WHEA / aborto de seguridad",
+  "settings.show_disclaimer": "⚠ Mostrar aviso de riesgos de nuevo",
+  "settings.show_disclaimer_title": "Volver a mostrar el aviso de riesgos de inicio",
+
+  "modes.manual_info_html": "<strong>Prueba manual</strong> — ejecuta tus valores CO actuales a través de la prueba de estrés seleccionada. Si algún núcleo da error, el informe te dice cuál y sugiere cuánto retroceder. Tú llevas el volante.",
+  "modes.auto_info_html": "<strong>Autoajuste (autotuning) · por núcleo</strong> — CoreCycler ejecuta la prueba de estrés y <em>automáticamente</em> incrementa el offset CO de cada núcleo (menos negativo) cuando ese núcleo da error, y vuelve a probarlo. Camina cada núcleo hasta su borde estable individual. Define cuánto puede retroceder (Valor máx) y cuán agresivamente avanza (Incremento)."
 }

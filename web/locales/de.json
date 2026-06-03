@@ -88,5 +88,58 @@
   "toasts.applied_verified": "Angewendet ✓ (verifiziert)",
   "toasts.reverted": "Auf Startwerte zurückgesetzt",
   "toasts.resumed": "Intelligentes Tuning fortgesetzt",
-  "toasts.discarded": "Verworfen"
+  "toasts.discarded": "Verworfen",
+
+  "disclaimer.title": "Vor dem Tuning lesen",
+  "disclaimer.accept": "Ich verstehe die Risiken · Fortfahren",
+  "disclaimer.decline": "Tab schließen",
+  "disclaimer.dont_show": "Dies in diesem Browser nicht mehr anzeigen (über Einstellungen wiederherstellbar)",
+
+  "apply_confirm.title": "Diese Curve-Optimizer-Einstellungen anwenden?",
+  "apply_confirm.lead": "Im Begriff, die folgenden Offsets auf den SMU zu schreiben. Sie zuerst als Profil zu speichern lässt dich später zu dieser exakten Konfiguration zurück.",
+  "apply_confirm.save_apply": "📸 Profil speichern & anwenden",
+  "apply_confirm.apply_only": "Nur anwenden",
+  "apply_confirm.cancel": "Abbrechen",
+
+  "theater.waiting": "Warte auf erste Sondierung…",
+  "theater.narrative": "Verlauf",
+  "theater.autoscroll": "Auto-Scroll",
+  "theater.overall": "Gesamt",
+  "theater.eta": "ETA",
+
+  "pro.stat.pkg_temp": "Pkg Temp",
+  "pro.stat.pkg_power": "Pkg Leistung",
+  "pro.stat.avg_clock": "Ø Takt",
+  "pro.stat.avg_vid": "Ø VID",
+  "pro.stat.hottest_core": "Heißester Kern",
+  "pro.stat.avg_load": "Ø Last",
+  "pro.min": "min",
+  "pro.avg": "Ø",
+  "pro.max": "max",
+  "pro.samples": "Proben",
+  "pro.chart.per_core_clock": "Takt pro Kern (MHz)",
+  "pro.chart.per_core_voltage": "Spannung pro Kern (V)",
+  "pro.chart.temperature": "Temperatur (°C)",
+  "pro.chart.package_power": "Paketleistung (W)",
+  "pro.chart.boost_map": "Boost-Karte — Spannung × Takt (Streuung pro Kern, aktueller Schnappschuss)",
+  "pro.chart.hint_toggle": "klicken zum Umschalten · Umschalt+Klick zum Isolieren",
+
+  "labels.stress_test_short": "Stresstest:",
+  "labels.cycles_short": "Zyklen:",
+
+  "desc.smart_tune_hint": "Intelligentes Auto-Tuning verwendet Bisection + Telemetrie + Absturz-Historie. Im Tuning-Theater siehst du den Live-Fortschritt und in den Tuning-Ergebnissen das Urteil pro Kern.",
+  "desc.live_co_what": "Was der Chip gerade ausführt — nützlich während Auto-Tuning Dinge ändert. Nicht das, was im BIOS steht; SMU-Werte bis zum nächsten Neustart.",
+  "desc.safety_intro": "Harte Limits, die das Auto-Tuning sofort beim Überschreiten abbrechen. Zusammen mit dem WHEA Bodyguard verhindern sie das stille Abrutschen in einen BSOD, das eine Remote-Sitzung verbergen kann.",
+  "desc.shutdown_intro": "Wähle, was den Dienst stoppen soll. Das Terminalfenster des Servers (Strg+C oder Schließen des cmd-Fensters) stoppt ihn immer — das ist der Hauptschalter.",
+  "desc.settings_saved": "Einstellungen werden im Browser gespeichert (localStorage) — sie überleben Reloads.",
+
+  "settings.tabclose_main": "Schließen des Browser-Tabs/-Fensters stoppt den Dienst",
+  "settings.escshutdown_main": "Esc-Taste stoppt den Dienst (zusätzlich zum CO-Reset)",
+  "settings.whea_abort_main": "Auto-Abbruch bei WHEA-Warnung",
+  "settings.audio_alert_main": "Audio-Alarm bei WHEA / Sicherheitsabbruch",
+  "settings.show_disclaimer": "⚠ Risiko-Hinweis erneut anzeigen",
+  "settings.show_disclaimer_title": "Den Startup-Risiko-Hinweis erneut anzeigen",
+
+  "modes.manual_info_html": "<strong>Manueller Test</strong> — führt deine aktuellen CO-Werte durch den gewählten Stresstest. Wenn ein Kern Fehler liefert, sagt dir der Bericht welcher und schlägt vor, wie weit zurückzugehen. Du bleibst am Steuer.",
+  "modes.auto_info_html": "<strong>Auto-Tuning · pro Kern</strong> — CoreCycler führt den Stresstest aus und <em>erhöht automatisch</em> den CO-Offset jedes Kerns (weniger negativ), wenn dieser Kern Fehler liefert, und testet erneut. Bringt jeden Kern an seine individuelle stabile Kante. Lege fest, wie weit er zurückgehen kann (Max-Wert) und wie aggressiv er schrittet (Inkrement)."
 }

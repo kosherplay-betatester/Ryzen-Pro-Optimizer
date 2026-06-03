@@ -17,7 +17,11 @@ body {
   font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
   background: var(--bg);
   color: var(--text);
-  padding-bottom: 3rem;
+  /* Reserve enough bottom space for the fixed three-line footer
+     (warning line + service-info line + version line). At 3rem the
+     last column of cards would slide under the footer when the page
+     scrolled to the bottom, making the final card unreadable. */
+  padding-bottom: 6rem;
   line-height: 1.5;
 }
 /* Two-column full-width layout. Left side carries the live data

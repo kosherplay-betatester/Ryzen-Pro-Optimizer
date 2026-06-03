@@ -30,7 +30,7 @@ $ErrorActionPreference = 'Stop'
 
 # App version. Bumped manually per release; surfaced via /api/version
 # and shown in the UI footer. Keep in sync with CHANGELOG.md.
-$script:AppVersion = '0.8.1'
+$script:AppVersion = '0.8.2'
 
 # Project root
 $RepoRoot = $PSScriptRoot

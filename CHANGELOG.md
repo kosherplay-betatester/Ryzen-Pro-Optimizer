@@ -8,6 +8,57 @@ hit 1.0 yet — see the roadmap in [README.md](README.md#roadmap).
 
 ---
 
+## [0.8.2] — 2026-06-03 · "Wider i18n coverage + open-by-default views + footer scroll fix"
+
+Three follow-ups based on first-use feedback after 0.8.1.
+
+### New
+
+- **~50 additional UI strings translated** across all 9 locales:
+  - Disclaimer modal: title + accept/decline/dont-show buttons
+  - Apply confirmation modal: title, lead, all three buttons
+  - Tune Theater: "Waiting for first probe", "Narrative", "auto-scroll",
+    "Overall", "ETA"
+  - Pro Dashboard: all six stat tile labels (Pkg Temp, Pkg Power, Avg
+    Clock, Avg VID, Hottest Core, Avg Load), min/avg/max/samples
+    annotators, and all five chart titles + the "click to toggle ·
+    shift+click to solo" hint
+  - Test card: Stress test / Cycles labels, Max value / Increment by
+    labels (already in en, now also marked-up on the elements),
+    "Default 1 cycle…" hint, Smart Auto-Adjust hint, mode-info boxes
+    for Manual test and Auto-Adjust (with embedded `<strong>/<em>`
+    preserved via data-i18n-html)
+  - Live CO: "What the chip is running with right now…" description
+  - Safety Guards: intro paragraph, WHEA-abort label + description,
+    Audio alert label + description
+  - Settings/Shutdown behaviour: intro paragraph, both checkbox
+    labels, "Settings are saved in your browser…", "Show risk
+    disclaimer again" button + tooltip
+- **Pro Dashboard and per-core expanded telemetry are now open by
+  default** on page load. The user lands directly on the full data
+  view — charts + per-core voltage / clock / load tiles + V-Cache CCD
+  badges — instead of having to click "Open Pro Dashboard" and
+  "expand". Both can still be collapsed.
+
+### Fixed
+
+- **Scrolling now reaches the bottom of the page.** The fixed
+  three-line footer (warning + service info + version line) was being
+  compensated for by `body { padding-bottom: 3rem }` — enough for one
+  line, not three. The last card in either column was sliding under
+  the footer and getting cut off. Bumped to `6rem` so all card
+  content stays above the footer at full scroll.
+
+### Notes
+
+- Some verbose paragraphs remain English in the 8 non-English locales
+  for now: the disclaimer body (lead / safety nets / use-at-risk), the
+  tabclose-warn explanation, and BIOS vendor walkthroughs. They fall
+  back via the lookup chain. A translator can add the missing keys to
+  the relevant locale JSON without code changes.
+
+---
+
 ## [0.8.1] — 2026-06-03 · "RTL polish · BIOS-baseline tests · BIOS reset button"
 
 Three small but load-bearing follow-ups to 0.8.0 based on real-use feedback.

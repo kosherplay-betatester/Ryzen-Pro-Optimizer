@@ -88,5 +88,58 @@
   "toasts.applied_verified": "تم التطبيق ✓ (تم التحقق)",
   "toasts.reverted": "تمت العودة إلى قيم البدء",
   "toasts.resumed": "تم استئناف الضبط الذكي",
-  "toasts.discarded": "تم التجاهل"
+  "toasts.discarded": "تم التجاهل",
+
+  "disclaimer.title": "اقرأ هذا قبل الضبط",
+  "disclaimer.accept": "أفهم المخاطر · متابعة",
+  "disclaimer.decline": "إغلاق علامة التبويب",
+  "disclaimer.dont_show": "لا تعرض هذا مرة أخرى في هذا المتصفح (يمكن إعادة التعيين من الإعدادات)",
+
+  "apply_confirm.title": "تطبيق إعدادات Curve Optimizer هذه؟",
+  "apply_confirm.lead": "على وشك كتابة الإزاحات التالية إلى SMU. حفظها كملف شخصي يتيح لك الرجوع إلى هذه التهيئة بالضبط لاحقاً.",
+  "apply_confirm.save_apply": "📸 حفظ الملف الشخصي والتطبيق",
+  "apply_confirm.apply_only": "تطبيق فقط",
+  "apply_confirm.cancel": "إلغاء",
+
+  "theater.waiting": "في انتظار أول سبر…",
+  "theater.narrative": "السرد",
+  "theater.autoscroll": "تمرير تلقائي",
+  "theater.overall": "إجمالي",
+  "theater.eta": "ETA",
+
+  "pro.stat.pkg_temp": "حرارة الحزمة",
+  "pro.stat.pkg_power": "طاقة الحزمة",
+  "pro.stat.avg_clock": "متوسط الساعة",
+  "pro.stat.avg_vid": "متوسط VID",
+  "pro.stat.hottest_core": "أحر نواة",
+  "pro.stat.avg_load": "متوسط الحمل",
+  "pro.min": "أدنى",
+  "pro.avg": "متوسط",
+  "pro.max": "أقصى",
+  "pro.samples": "عينات",
+  "pro.chart.per_core_clock": "ساعة كل نواة (MHz)",
+  "pro.chart.per_core_voltage": "جهد كل نواة (V)",
+  "pro.chart.temperature": "الحرارة (°C)",
+  "pro.chart.package_power": "طاقة الحزمة (W)",
+  "pro.chart.boost_map": "خريطة boost — الجهد × الساعة (تشتت لكل نواة، لقطة حالية)",
+  "pro.chart.hint_toggle": "انقر للتبديل · shift+نقر للعزل",
+
+  "labels.stress_test_short": "اختبار الإجهاد:",
+  "labels.cycles_short": "الدورات:",
+
+  "desc.smart_tune_hint": "الضبط الذكي يستخدم البحث الثنائي + القياس عن بُعد + سجل الأعطال. راجع مسرح الضبط للتقدم المباشر وبطاقة نتائج الضبط للحكم لكل نواة.",
+  "desc.live_co_what": "ما تعمل به الشريحة الآن — مفيد أثناء قيام الضبط التلقائي بتغيير الأشياء. ليس ما في BIOS؛ قيم SMU حتى إعادة التشغيل التالية.",
+  "desc.safety_intro": "حدود صارمة تُلغي الضبط التلقائي فور تجاوزها. مع WHEA Bodyguard، تمنع الانزلاق الصامت إلى BSOD الذي قد تخفيه جلسة عن بُعد.",
+  "desc.shutdown_intro": "اختر ما يجب أن يوقف الخدمة. نافذة طرفية الخادم (Ctrl+C أو إغلاق نافذة cmd) توقفها دائماً — هذا هو المفتاح الرئيسي.",
+  "desc.settings_saved": "تُحفظ الإعدادات في متصفحك (localStorage) — تنجو من إعادة التحميل.",
+
+  "settings.tabclose_main": "إغلاق علامة تبويب/نافذة المتصفح يوقف الخدمة",
+  "settings.escshutdown_main": "مفتاح Esc يوقف الخدمة (بالإضافة إلى إعادة تعيين CO)",
+  "settings.whea_abort_main": "الإلغاء التلقائي عند تحذير WHEA",
+  "settings.audio_alert_main": "تنبيه صوتي عند WHEA / إلغاء الأمان",
+  "settings.show_disclaimer": "⚠ إعادة عرض إخلاء مسؤولية المخاطر",
+  "settings.show_disclaimer_title": "إعادة عرض إخلاء مسؤولية المخاطر عند البدء",
+
+  "modes.manual_info_html": "<strong>اختبار يدوي</strong> — يُجري قيم CO الحالية عبر اختبار الإجهاد المختار. إذا أخطأت نواة، يخبرك التقرير أيها ويقترح كم تتراجع. تبقى أنت في القيادة.",
+  "modes.auto_info_html": "<strong>الضبط التلقائي · لكل نواة</strong> — CoreCycler يُجري اختبار الإجهاد و<em>يزيد تلقائياً</em> إزاحة CO لكل نواة (أقل سلبية) كلما أخطأت تلك النواة، ثم يعيد اختبارها. يمشي بكل نواة إلى حافتها المستقرة الفردية. حدد إلى أي مدى يمكنه التراجع (القيمة القصوى) ومدى عدوانية خطواته (الزيادة)."
 }
