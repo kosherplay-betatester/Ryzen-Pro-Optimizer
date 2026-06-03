@@ -84,6 +84,9 @@
   "footer.stuck": "⚠ متوقف أو غير مستقر؟ اضغط Esc لإعادة تعيين جميع النوى إلى 0 فوراً.",
   "footer.version_label": "ملاحظات الإصدار",
 
+  "status.waiting_for_log": "في انتظار أن يبدأ CoreCycler كتابة سجله…",
+  "status.initializing": "الاختبار يُهيِّئ — CoreCycler في مرحلة البانر/التهيئة. عادةً ما يظهر سطر التقدم الأول لكل نواة خلال 30 ثانية.",
+
   "toasts.applied": "تم التطبيق ✓",
   "toasts.applied_verified": "تم التطبيق ✓ (تم التحقق)",
   "toasts.reverted": "تمت العودة إلى قيم البدء",

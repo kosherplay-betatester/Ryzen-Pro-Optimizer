@@ -84,6 +84,9 @@
   "footer.stuck": "⚠ Bloqué ou instable ? Appuyez sur Échap pour réinitialiser tous les cœurs à 0.",
   "footer.version_label": "notes de version",
 
+  "status.waiting_for_log": "En attente que CoreCycler commence à écrire son journal…",
+  "status.initializing": "Test en cours d'initialisation — CoreCycler est dans sa phase de bannière/configuration. La première ligne de progression par cœur apparaît généralement dans les 30 secondes.",
+
   "toasts.applied": "Appliqué ✓",
   "toasts.applied_verified": "Appliqué ✓ (vérifié)",
   "toasts.reverted": "Restauré aux valeurs de lancement",

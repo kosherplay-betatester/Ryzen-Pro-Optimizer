@@ -84,6 +84,9 @@
   "footer.stuck": "⚠ 停止または不安定?Esc を押すと全コアを即座に 0 にリセット。",
   "footer.version_label": "リリースノート",
 
+  "status.waiting_for_log": "CoreCycler がログの書き込みを開始するのを待っています…",
+  "status.initializing": "テストを初期化中 — CoreCycler はバナー/設定フェーズです。最初のコア別進捗行は通常 30 秒以内に表示されます。",
+
   "toasts.applied": "適用しました ✓",
   "toasts.applied_verified": "適用しました ✓ (検証済)",
   "toasts.reverted": "起動時の値に戻しました",

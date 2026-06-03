@@ -84,6 +84,9 @@
   "footer.stuck": "⚠ Hängt oder instabil? Esc drücken, um alle Kerne sofort auf 0 zurückzusetzen.",
   "footer.version_label": "Versionshinweise",
 
+  "status.waiting_for_log": "Warte, bis CoreCycler sein Log schreibt…",
+  "status.initializing": "Test wird initialisiert — CoreCycler ist in seiner Banner-/Konfigurationsphase. Die erste Pro-Kern-Fortschrittszeile erscheint normalerweise innerhalb von 30 Sekunden.",
+
   "toasts.applied": "Angewendet ✓",
   "toasts.applied_verified": "Angewendet ✓ (verifiziert)",
   "toasts.reverted": "Auf Startwerte zurückgesetzt",

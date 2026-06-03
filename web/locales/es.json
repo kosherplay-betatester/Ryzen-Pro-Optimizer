@@ -84,6 +84,9 @@
   "footer.stuck": "⚠ ¿Atascado o inestable? Pulsa Esc para restablecer todos los núcleos a 0.",
   "footer.version_label": "notas de la versión",
 
+  "status.waiting_for_log": "Esperando a que CoreCycler empiece a escribir su registro…",
+  "status.initializing": "Test inicializando — CoreCycler está en su fase de banner/configuración. La primera línea de progreso por núcleo suele aparecer en los próximos 30 segundos.",
+
   "toasts.applied": "Aplicado ✓",
   "toasts.applied_verified": "Aplicado ✓ (verificado)",
   "toasts.reverted": "Revertido a valores de inicio",

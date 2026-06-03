@@ -84,6 +84,9 @@
   "footer.stuck": "⚠ 卡住或不稳定?按 Esc 立即将所有核心重置为 0。",
   "footer.version_label": "发行说明",
 
+  "status.waiting_for_log": "等待 CoreCycler 开始写入日志…",
+  "status.initializing": "测试初始化中 — CoreCycler 处于横幅/配置阶段。首个每核进度行通常会在 30 秒内出现。",
+
   "toasts.applied": "已应用 ✓",
   "toasts.applied_verified": "已应用 ✓ (已验证)",
   "toasts.reverted": "已恢复到启动值",

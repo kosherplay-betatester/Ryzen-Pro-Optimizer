@@ -84,6 +84,9 @@
   "footer.stuck": "⚠ תקוע או לא יציב? לחץ על Esc כדי לאפס מיד את כל הליבות ל-0.",
   "footer.version_label": "הערות גרסה",
 
+  "status.waiting_for_log": "ממתין שCoreCycler יתחיל לכתוב את הלוג…",
+  "status.initializing": "הבדיקה מאתחלת — CoreCycler בשלב הבאנר/קונפיגורציה. שורת ההתקדמות הראשונה לכל ליבה מופיעה בדרך כלל תוך 30 שניות.",
+
   "toasts.applied": "הוחל ✓",
   "toasts.applied_verified": "הוחל ✓ (אומת)",
   "toasts.reverted": "הוחזר לערכי הפעלה",

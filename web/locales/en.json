@@ -88,6 +88,9 @@
   "footer.service": "ℹ Service runs until you press Ctrl+C in its terminal window or close that window. Tab-close auto-shutdown is opt-in (see ⚙ Shutdown behavior).",
   "footer.version_label": "release notes",
 
+  "status.waiting_for_log": "Waiting for CoreCycler to start writing its log…",
+  "status.initializing": "Test initializing — CoreCycler is in its banner/config phase. The first per-core progress line usually appears within 30 seconds.",
+
   "toasts.applied": "Applied ✓",
   "toasts.applied_verified": "Applied ✓ (verified)",
   "toasts.reverted": "Reverted to launch values",

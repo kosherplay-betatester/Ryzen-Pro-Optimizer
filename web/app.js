@@ -1351,25 +1351,43 @@ async function pollStatus() {
     const s = r.data;
     stateName = s.state;
     if (s.state === 'TESTING' || s.state === 'STOPPING') {
-      // Card was made visible by startTest. If s.live is populated,
-      // render the full status; otherwise show a placeholder so the
-      // user never sees a blank card during a test. s.live can be
-      // null briefly while CoreCycler boots and starts writing its
-      // log file (Get-LiveStatus returns null until $LastLogPath
-      // resolves) - without this fallback the card was just empty.
+      // Card was made visible by startTest. Three render states:
+      //  1. s.live null      -> CoreCycler hasn't created its log
+      //                          yet (first 1-3 s after process spawn);
+      //                          show "waiting for log".
+      //  2. s.live but all
+      //     fields null      -> log exists but CoreCycler is still in
+      //                          its banner/config phase (no "Set to
+      //                          Core N" / "Iteration X/Y" line yet,
+      //                          typically 5-30 s); show "initializing".
+      //  3. s.live with at
+      //     least one field
+      //     populated        -> render the full status (per-core grid +
+      //                          counters).
+      // Without (1) and (2) the card sat blank or showed a row of "?"
+      // placeholders during normal CoreCycler bootstrap, which read as
+      // "the test is broken" to users.
       const c = s.live;
       const sc = document.getElementById('status-content');
-      if (c) {
+      const hasAnyProgress = c && (c.currentCore != null || c.iteration != null || (c.perCore && c.perCore.length > 0));
+      if (hasAnyProgress) {
         const perCoreGrid = renderPerCoreGrid(c.perCore);
         sc.innerHTML =
           `<p>Testing core <strong>${c.currentCore ?? '?'}</strong> · Iteration <strong>${c.iteration ?? '?'}/${c.iterationsTotal ?? '?'}</strong></p>
            <p>Errors so far: ${c.errors} · WHEA: ${c.wheaErrors} · Runtime: ${c.runtime || '—'}</p>
            ${perCoreGrid}`;
-      } else if (!sc.dataset.placed || sc.dataset.placed !== 'waiting') {
-        sc.innerHTML = `<p class="muted small">⏳ Waiting for CoreCycler to start writing its log…</p>`;
-        sc.dataset.placed = 'waiting';
+        sc.dataset.placed = 'live';
+      } else if (c) {
+        if (sc.dataset.placed !== 'initializing') {
+          sc.innerHTML = `<p class="muted small">⏳ ${escHtml(i18n.t('status.initializing'))}</p>`;
+          sc.dataset.placed = 'initializing';
+        }
+      } else {
+        if (sc.dataset.placed !== 'waiting') {
+          sc.innerHTML = `<p class="muted small">⏳ ${escHtml(i18n.t('status.waiting_for_log'))}</p>`;
+          sc.dataset.placed = 'waiting';
+        }
       }
-      if (c) sc.dataset.placed = 'live';
     }
     // Live CO panel: always visible (set in index.html without `hidden`).
     // Refresh from the SMU every 3 polls (3 s) so Auto-Adjust and Smart
