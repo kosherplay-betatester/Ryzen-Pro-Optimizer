@@ -30,11 +30,16 @@ Set-StrictMode -Version Latest
 
 $script:RpoUpdateRepo        = 'kosherplay-betatester/Ryzen-Pro-Optimizer'
 $script:RpoUpdateBranch      = 'main'
+$script:RpoLatestReleaseUrl  = "https://api.github.com/repos/$($script:RpoUpdateRepo)/releases/latest"
 $script:RpoVersionProbeUrl   = "https://raw.githubusercontent.com/$($script:RpoUpdateRepo)/$($script:RpoUpdateBranch)/server.ps1"
-$script:RpoUpdateUrl         = "https://github.com/$($script:RpoUpdateRepo)/archive/refs/heads/$($script:RpoUpdateBranch).zip"
+$script:RpoMainZipUrl        = "https://github.com/$($script:RpoUpdateRepo)/archive/refs/heads/$($script:RpoUpdateBranch).zip"
 $script:RpoUpdatePreserve    = @('runtime','profiles','corecycler','vendor','installer-cache')
 $script:RpoMinCheckIntervalH = 6     # don't probe more often than every N hours on normal launches
 $script:RpoVersionRegex      = '\$script:AppVersion\s*=\s*[''"]([^''"]+)[''"]'
+# After a successful Get-RemoteRpoVersion the resolver caches *where*
+# the version came from so Invoke-RpoUpdate downloads from the matching
+# source (release zipball vs main branch zip). $null until probed.
+$script:RpoRemoteSource      = $null   # @{ kind='release'|'main'; downloadUrl='...'; tagName='v...' }
 
 function Get-LocalRpoVersion {
     param([Parameter(Mandatory)][string]$RepoRoot)
@@ -45,14 +50,77 @@ function Get-LocalRpoVersion {
     '0.0.0'
 }
 
+# Normalise a release tag into the version we compare with the local
+# $script:AppVersion. Tags conventionally have a leading "v" (v1.20260603)
+# but the local constant is stored bare ("1.20260603"). Strip the v so
+# [System.Version] parses cleanly.
+function ConvertFrom-RpoReleaseTag {
+    param([Parameter(Mandatory)][string]$Tag)
+    if ($Tag -match '^v(?<v>.+)$') { return $Matches.v }
+    $Tag
+}
+
+# Probe the remote version. Releases take precedence: if the GitHub
+# Releases API returns a latest non-draft release, we use its tag.
+# Pre-releases are accepted too (the API only returns one as `latest`
+# when no full release exists; users on a freshly-tagged pre-release
+# branch are intentionally opting in by being there).
+# When no releases exist at all, fall back to parsing the version
+# constant from raw main/server.ps1 - matches pre-release-aware
+# behaviour and keeps the bootstrap path working before the first
+# release is cut.
 function Get-RemoteRpoVersion {
     param([int]$TimeoutSec = 5)
-    # TLS 1.2 - GitHub rejects older. PS 5.1 still defaults to 1.0/1.1.
     try { [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12 } catch {}
+
+    # Try GitHub Releases API first.
+    try {
+        $resp = Invoke-WebRequest -Uri $script:RpoLatestReleaseUrl -UseBasicParsing -TimeoutSec $TimeoutSec `
+            -Headers @{ 'Accept' = 'application/vnd.github+json'; 'User-Agent' = 'Ryzen-Pro-Optimizer-Updater' }
+        if ($resp.StatusCode -eq 200) {
+            $rel = $resp.Content | ConvertFrom-Json
+            if ($rel -and $rel.tag_name) {
+                $version = ConvertFrom-RpoReleaseTag -Tag ([string]$rel.tag_name)
+                # Prefer a release ASSET if one is attached (the
+                # maintainer's curated zip); otherwise fall back to the
+                # auto-generated source zip GitHub provides for any tag.
+                $url = "https://github.com/$($script:RpoUpdateRepo)/archive/refs/tags/$($rel.tag_name).zip"
+                if ($rel.assets -and $rel.assets.Count -gt 0) {
+                    $zipAsset = $rel.assets | Where-Object { $_.name -like '*.zip' } | Select-Object -First 1
+                    if ($zipAsset -and $zipAsset.browser_download_url) {
+                        $url = [string]$zipAsset.browser_download_url
+                    }
+                }
+                $script:RpoRemoteSource = @{
+                    kind        = 'release'
+                    tagName     = [string]$rel.tag_name
+                    downloadUrl = $url
+                    htmlUrl     = [string]$rel.html_url
+                }
+                return $version
+            }
+        }
+    } catch {
+        # 404 (no releases yet) is the expected case during bootstrap;
+        # log at DEBUG-ish volume and fall through to main probe.
+        Write-Log INFO "Updater: Releases API miss ($($_.Exception.Message)); falling back to main branch probe"
+    }
+
+    # Fallback: parse $script:AppVersion from raw main/server.ps1. Used
+    # only while no releases exist; once the first release is published
+    # this branch stops being reached on normal launches.
     $resp = Invoke-WebRequest -Uri $script:RpoVersionProbeUrl -UseBasicParsing -TimeoutSec $TimeoutSec
     if ($resp.StatusCode -ne 200) { throw "HTTP $($resp.StatusCode) from $($script:RpoVersionProbeUrl)" }
     $text = [string]$resp.Content
-    if ($text -match $script:RpoVersionRegex) { return $Matches[1] }
+    if ($text -match $script:RpoVersionRegex) {
+        $script:RpoRemoteSource = @{
+            kind        = 'main'
+            tagName     = $null
+            downloadUrl = $script:RpoMainZipUrl
+            htmlUrl     = "https://github.com/$($script:RpoUpdateRepo)"
+        }
+        return $Matches[1]
+    }
     throw "could not parse `$script:AppVersion line from remote server.ps1"
 }
 
@@ -154,11 +222,20 @@ function Invoke-RpoUpdate {
 
     try {
         try { [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12 } catch {}
+        # Resolve the download URL from whichever source Get-RemoteRpoVersion
+        # found. If the cache is empty (e.g. tests calling Invoke-RpoUpdate
+        # directly without going through Get-RemoteRpoVersion first) fall
+        # back to the legacy main-branch zip.
+        $downloadUrl = if ($script:RpoRemoteSource -and $script:RpoRemoteSource.downloadUrl) {
+            $script:RpoRemoteSource.downloadUrl
+        } else { $script:RpoMainZipUrl }
+        Write-Log INFO "Updater: downloading from $downloadUrl"
         # Invoke-WebRequest's progress bar can slow large downloads ~10x in PS 5.1.
         $prevProgress = $ProgressPreference
         $ProgressPreference = 'SilentlyContinue'
         try {
-            Invoke-WebRequest -Uri $script:RpoUpdateUrl -OutFile $zip -UseBasicParsing
+            Invoke-WebRequest -Uri $downloadUrl -OutFile $zip -UseBasicParsing `
+                -Headers @{ 'User-Agent' = 'Ryzen-Pro-Optimizer-Updater' }
         } finally {
             $ProgressPreference = $prevProgress
         }
@@ -167,9 +244,18 @@ function Invoke-RpoUpdate {
         }
 
         Expand-Archive -Path $zip -DestinationPath $work -Force
-        # GitHub archives extract to "<repo>-<branch>/..."
+        # GitHub archives extract to "<repo>-<branch>/..." for main and
+        # "<repo>-<tag>/..." for tagged releases (e.g.
+        # "Ryzen-Pro-Optimizer-v1.20260603/"). Custom release assets can
+        # have arbitrary top-level shapes; if our wildcard misses, fall
+        # back to the first directory in $work that contains a server.ps1.
         $extracted = Get-ChildItem -Path $work -Directory -Filter 'Ryzen-Pro-Optimizer-*' | Select-Object -First 1
-        if (-not $extracted) { throw "extracted archive shape unexpected (no Ryzen-Pro-Optimizer-* dir)" }
+        if (-not $extracted) {
+            $extracted = Get-ChildItem -Path $work -Directory |
+                Where-Object { Test-Path (Join-Path $_.FullName 'server.ps1') } |
+                Select-Object -First 1
+        }
+        if (-not $extracted) { throw "extracted archive shape unexpected (no top-level dir with server.ps1)" }
 
         $bkRoot = Join-Path $RepoRoot 'installer-cache\backups'
         if (-not (Test-Path $bkRoot)) { New-Item -ItemType Directory -Path $bkRoot -Force | Out-Null }

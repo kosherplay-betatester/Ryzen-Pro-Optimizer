@@ -8,6 +8,83 @@ hit 1.0 yet — see the roadmap in [README.md](README.md#roadmap).
 
 ---
 
+## [1.20260603] — 2026-06-03 · "First public release · release-aware auto-updater"
+
+First version cut as an actual GitHub Release rather than a bumped
+constant on `main`. Everything from 0.6.0 through 0.8.2 is rolled
+into this. Going forward, `main` is the working branch and **users
+update from tagged GitHub Releases only** — pushing a half-finished
+commit no longer offers itself to the world as a candidate update.
+
+### Versioning
+
+Switched from semver-ish (0.x.y) to `1.YYYYMMDD` calendar versioning.
+Reasoning: the project has no formal API; semver minor/patch
+distinctions weren't load-bearing; release cadence is feature-driven
+not API-driven; date-stamped versions read better in release notes
+("got an update prompt on the 3rd? you're on 1.20260603"). YYYYMMDD
+ordering is the only date format that sorts correctly as an integer
+across month and year boundaries, so the auto-updater's
+`[System.Version]`-based comparison stays correct forever.
+
+### New
+
+- **Auto-updater is now release-aware** (`lib/updater.ps1`):
+  - `Get-RemoteRpoVersion` queries the GitHub Releases API
+    (`/repos/.../releases/latest`) first and uses its `tag_name`
+    as the canonical version. Tag is `v`-prefixed for git
+    convention; the leading `v` is stripped before comparison
+    against the local `$script:AppVersion` constant.
+  - If the release has a `.zip` asset attached, that's downloaded
+    in preference to the auto-generated source zip. Lets the
+    maintainer ship a curated artifact when wanted (e.g.
+    pre-fetched CoreCycler/PawnIO/LHM dependencies for an
+    offline-friendly bundle).
+  - Falls back to the legacy main-branch probe + main.zip download
+    when no releases exist, so existing 0.7.x–0.8.2 installs can
+    still pull this update via the path they already know. After
+    this update lands, the new updater takes over and all future
+    updates come from releases.
+  - `$script:RpoRemoteSource` caches kind/tagName/downloadUrl
+    between probe and download so `Invoke-RpoUpdate` knows where
+    to fetch from without re-hitting the API.
+  - `User-Agent: Ryzen-Pro-Optimizer-Updater` set on both API and
+    download requests (GitHub rejects anonymous requests without
+    one and applies stricter rate limits).
+  - Archive extraction adapter: if the wildcard
+    `Ryzen-Pro-Optimizer-*` directory isn't present (custom asset
+    with a different top-level shape), falls back to scanning for
+    the first subdir that contains a `server.ps1`. Future-proofs
+    against curated zips that might extract as `app/` or similar.
+
+### Notes for maintainers
+
+Workflow shift: stop bumping `$script:AppVersion` on every commit.
+Treat `main` as WIP. When ready to ship:
+
+```
+git tag v1.YYYYMMDD -m "..."
+git push origin v1.YYYYMMDD
+gh release create v1.YYYYMMDD --generate-notes [--prerelease]
+```
+
+`--prerelease` keeps the release out of the auto-updater's
+"latest" pool — useful for soak-testing a new release on your own
+machine before promoting. Promote with
+`gh release edit vX --prerelease=false` once happy.
+
+If a release ships a bug:
+- `gh release edit vX --prerelease` to hide it from the updater,
+  push a fixed release immediately after.
+- `gh release delete vX --cleanup-tag --yes` to wipe it entirely;
+  the updater falls back to whichever previous release is now
+  marked latest.
+- Users who already updated retain the buggy code locally; they
+  recover via the next release prompt, or by restoring from
+  `installer-cache/backups/{old}-{timestamp}/`.
+
+---
+
 ## [0.8.2] — 2026-06-03 · "Wider i18n coverage + open-by-default views + footer scroll fix"
 
 Three follow-ups based on first-use feedback after 0.8.1.

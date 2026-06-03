@@ -1,6 +1,6 @@
 # Ryzen Pro Optimizer
 
-**Current version: 0.7.1** — see [CHANGELOG.md](CHANGELOG.md) for full release notes.
+**Current version: 1.20260603** — see [CHANGELOG.md](CHANGELOG.md) for full release notes.
 
 A friendly, local web-based UI for tuning AMD Ryzen **Curve Optimizer** offsets — sets per-core CO values from Windows (no BIOS reboot), runs stress tests via [CoreCycler](https://github.com/sp00n/corecycler), parses logs into a clean pass/fail report with smart next-step suggestions, and shows live CPU telemetry the whole time.
 
