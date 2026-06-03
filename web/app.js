@@ -1381,6 +1381,13 @@ async function pollStatus() {
     if (s.state === 'IDLE') {
       document.getElementById('stop-test').classList.add('hidden');
       document.getElementById('start-test').classList.remove('hidden');
+      // Hide the Live Status card too. It only makes sense while a
+      // test is running; if a previous test died abnormally (stop
+      // button mid-flight, CoreCycler crash, server restart while
+      // state was TESTING) we'd otherwise be left staring at an
+      // empty card or stale "Testing core 3 · Iteration 2/5" from
+      // the last run.
+      document.getElementById('status-card')?.classList.add('hidden');
     }
     if (s.wheaEvents && s.wheaEvents.length > lastWheaCount) {
       showToast('⚠ WHEA event detected', 'error');
