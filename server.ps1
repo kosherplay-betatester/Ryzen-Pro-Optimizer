@@ -995,6 +995,29 @@ function Build-Report {
     $reportObj | Add-Member -NotePropertyName coMode -NotePropertyValue $reportMode -Force
     $script:LastReport = $reportObj
     Write-Log INFO "Report built: verdict=$($r.verdict), failed=$($r.coresFailed.Count)"
+
+    # Snapshot the final SMU state as a profile so the user has a
+    # permanent "this is where the test ended" record, regardless of
+    # verdict. Naming: post-{process}-{verdict}-{timestamp}. So a
+    # passed Auto-Adjust run leaves "post-auto-adjust-pass-..." and a
+    # failed one leaves "post-auto-adjust-fail-..." - the user can
+    # always reload either via Profiles. Best-effort; never blocks the
+    # report.
+    if ($coReady -and $null -ne $currentVals -and $currentVals.Count -eq $cpu.Cores) {
+        try {
+            $proc = if ($stateData -and $stateData['smartTune']) { 'smart-tune' }
+                    elseif ($stateData -and $stateData['mode'] -eq 'auto') { 'auto-adjust' }
+                    else { 'manual' }
+            $verdictTag = if ($r.verdict -eq 'PASS') { 'pass' }
+                          elseif ($r.verdict -eq 'INCOMPLETE') { 'incomplete' }
+                          else { 'fail' }
+            Save-PreTuneSnapshot -Process "post-$proc-$verdictTag" -CurrentValues $currentVals `
+                -CpuModel $cpu.Name -CcdCount $cpu.CcdCount | Out-Null
+            Write-Log INFO "Saved post-test snapshot profile (post-$proc-$verdictTag)"
+        } catch {
+            Write-Log WARN "Post-test snapshot failed: $($_.Exception.Message)"
+        }
+    }
 }
 
 # ----- Boot -----

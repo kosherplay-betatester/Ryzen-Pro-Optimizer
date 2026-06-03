@@ -430,12 +430,22 @@ function renderTuneResults(smartTune) {
   const meta = document.getElementById('tune-results-meta');
   const summary = document.getElementById('tune-results-summary');
   if (!card || !wrap || !cpuInfo) return;
-  if (!smartTune || smartTune.status !== 'COMPLETED') { card.classList.add('hidden'); return; }
+  // Show whenever the tune has settled (COMPLETED, STOPPED, FAILED).
+  // STOPPED is the "user hit Stop mid-bisection" case - the per-core
+  // table is still the best surface for showing what was found before
+  // the stop. FAILED means safety guard aborted; same logic. Don't
+  // show during IDLE/RUNNING - the data isn't final yet.
+  const settledStatuses = ['COMPLETED','STOPPED','FAILED'];
+  if (!smartTune || !settledStatuses.includes(smartTune.status)) { card.classList.add('hidden'); return; }
 
   card.classList.remove('hidden');
   const applied = smartTune.applyMode === 'live';
+  const statusNote = smartTune.status === 'COMPLETED' ? '' :
+                     smartTune.status === 'STOPPED'  ? ' · STOPPED by user (partial results)' :
+                     smartTune.status === 'FAILED'   ? ' · ABORTED (safety / error)' : '';
   meta.textContent = `${smartTune.mode || '?'} · ${smartTune.direction || '?'} · ` +
-                     (applied ? 'live apply mode (already on SMU)' : 'report mode (SMU reverted to launch)');
+                     (applied ? 'live apply mode (already on SMU)' : 'report mode (SMU reverted to launch)') +
+                     statusNote;
 
   let lockedCount = 0, failedCount = 0;
   let rows = '';
