@@ -4,27 +4,11 @@
 
 A friendly, local web-based UI for tuning AMD Ryzen **Curve Optimizer** offsets — sets per-core CO values from Windows (no BIOS reboot), runs stress tests via [CoreCycler](https://github.com/sp00n/corecycler), parses logs into a clean pass/fail report with smart next-step suggestions, and shows live CPU telemetry the whole time.
 
-Now ships with a **Pro Dashboard** (live charts, V/F scatter, per-core heatmap, history export), a **Safety Guard** that hard-aborts stress tests on temp/voltage/WHEA breaches, a **panic-revert breadcrumb** that survives BSODs so the next boot can roll back to safe values automatically, a **Smart Auto-Adjust** bisection-based tuner with five goal modes + V-Cache awareness + cross-session learning, a **Tune Theater** live narrative UI that shows every step the algorithm takes, an opt-in **startup disclaimer** that walks the user through the risks of CPU undervolting, a **first-run BIOS-setup helper** that auto-detects when PBO/CO isn't enabled in BIOS and shows per-vendor menu paths, a **Live Curve Optimizer panel** that reads the SMU continuously so you can watch the chip's actual values change in real time, and (new in 0.7.0) a built-in **auto-updater** that probes GitHub for newer releases on every launch and applies them safely without touching your profiles or session state.
+Ships with a **Pro Dashboard** (live charts, V/F scatter, per-core heatmap, history export), a **Safety Guard** that hard-aborts stress tests on temp/voltage/WHEA breaches, a **panic-revert breadcrumb** that survives BSODs so the next boot can roll back to safe values automatically, **Smart Auto-Adjust** — a bisection-based tuner with five goal modes + V-Cache awareness + cross-session learning + a per-core results table at the end, a **Tune Theater** live narrative UI that shows every step the algorithm takes, an opt-in **startup disclaimer** that walks the user through the risks of CPU undervolting, a **first-run BIOS-setup helper** that auto-detects when PBO/CO isn't enabled in BIOS and shows per-vendor menu paths, a **Live Curve Optimizer panel** that reads the SMU continuously so you can watch the chip's actual values change in real time, a **built-in auto-updater** that pulls tagged GitHub Releases and preserves all your profiles and session state, a **full-width two-column layout** (data on the left, controls on the right) plus **9-language i18n** (English, French, Spanish, German, Russian, Hebrew, Arabic, Chinese, Japanese — with RTL support for Hebrew and Arabic).
 
 Think of it as a free, open, transparent, manual-by-default alternative to Hydra — built on top of CoreCycler so the proven stress-test machinery is doing the heavy lifting, while we focus on the UX, safety, and live visibility layer most users actually need.
 
----
-
-## What's new in 0.7.1 (highlights)
-
-- **Tune Results card** — per-core table that appears when Smart Auto-Adjust completes. One row per core showing **Start CO** vs **Recommended CO** vs **what the SMU is actually at right now**, plus the owning scope, probe count, and outcome (Locked / Failed / Not tuned). Colour-coded green/amber/neutral. Four explicit action buttons: **Apply recommended** (commits to SMU via the new `/api/smart-tune/apply-results` route with the same panic-revert breadcrumb pattern the safety guard uses), **Revert to launch values**, **Save as profile…**, **Dismiss**.
-- **Report mode is now the default for Smart Auto-Adjust.** When the tune completes, the server automatically restores your launch CO snapshot before flipping state to REPORTING — you're at a known-safe baseline while you review the table, and you commit explicitly. Old behaviour (leave the SMU at whatever the tune ended at) is still available as an opt-in radio: **Apply as we go**. Safer-by-default for users walking away from a multi-hour run.
-- **Resolution rule** for "what would Apply Recommended write" — per-core scope's locked value wins; otherwise the parent CCD scope's locked value; otherwise the launch fallback. FAILED and still-probing scopes fall back to launch (not their half-explored bounds), so the recommendation is always either *verified-stable* or *known-safe-untouched*.
-
-## What's new in 0.7.0 (highlights)
-
-- **Auto-updater.** `Launch.bat` checks GitHub for a newer version on every boot (rate-limited to once every 6 h). If `main`'s `$script:AppVersion` is ahead of yours, a colored `Y/N/S` prompt fires — default **Y** applies the update; **N** skips this run; **S** silences the prompt until the next release. Updates pull `main.zip`, snapshot the existing top-level tree into `installer-cache/backups/{old-version}-{timestamp}/` for one-shot rollback, then overlay — leaving `runtime/`, `profiles/`, `corecycler/`, `vendor/`, and `installer-cache/` strictly untouched. Refuses to run if another instance is on port 8765 or a tune is mid-flight on disk. A separate `Update.bat` triggers a manual force-check.
-- **Per-core test progress grid** under Live Status — a pill per core that's been activated, color-coded green/blue/amber for passed/testing/failed, with inline `N err` / `N WHEA` tags. New `Parse-LiveCoreStats` attributes events to whichever core was active at the time, so you can see exactly which cores cleared their iterations and which ones tripped.
-- **Smart Tune progress overlay on per-core CO pills.** Each pill in the Live CO panel now shows the live SMU value **plus** a scope-status badge — 🔒 locked, ▶ probing now, dashed/dimmed pending, ❌ failed. The Live CO panel auto-switches to per-core view when a Smart Tune starts (respects later manual switches), so you see Auto-Adjust progress per core without leaving the card.
-- **Live Curve Optimizer panel is always visible** — was previously hidden outside of a tune. Useful idle to verify the BIOS-applied CO matches your saved profile.
-- **Fixed: `Inspect-SafetySnapshot` 500-ing /api/status every tick** — second pass on the same endpoint hardened in 0.6.0. Two distinct PowerShell 7.5+ regressions: `@($List[object])` raising `ArgumentException`, and a `-join` operator misparsed as a `Select-Object` parameter inside the defensive catch. Both fixed, with belt-and-braces around the log call so a future formatting mistake can't re-introduce the same class of bug.
-
-Full release notes including the v0.6.0 audit batch and earlier versions in [CHANGELOG.md](CHANGELOG.md).
+See [CHANGELOG.md](CHANGELOG.md) for release notes.
 
 ---
 
@@ -225,28 +209,27 @@ Double-click **`Launch.bat`**.
 
 Subsequent launches skip the installer and go straight to the server (~2 seconds to a usable browser tab).
 
-### Auto-updater (new in 0.7.0)
+### Auto-updater
 
 `Launch.bat` runs `update.ps1` before booting the server. On every launch (rate-limited to once every 6 h to avoid hammering GitHub on rapid restart cycles), it:
 
 1. Reads `$script:AppVersion` from your local `server.ps1`.
-2. Fetches the same line from `main` on GitHub via `raw.githubusercontent.com` (5 s timeout; fails open if you're offline).
-3. If the remote is newer, prints a coloured prompt:
+2. Queries the GitHub Releases API for the latest published release; if the release tag is newer than your local version, you get a coloured prompt:
    ```
    ============================================================
-     UPDATE AVAILABLE: v0.6.0  ->  v0.7.0
+     UPDATE AVAILABLE: v1.20260603  ->  v1.YYYYMMDD
      Strongly recommended. Your profiles, history, and runtime
      state are preserved by the updater.
 
      [Y] Update now (recommended)
      [N] Not this time
-     [S] Skip this version (don't ask again until v0.7.0+1)
+     [S] Skip this version
    ============================================================
    Choice (Y/N/S, default Y):
    ```
-4. On `Y`: downloads `main.zip`, snapshots the existing top-level tree into `installer-cache/backups/{old-version}-{timestamp}/`, then overlays. **Never touches** `runtime/`, `profiles/`, `corecycler/`, `vendor/`, or `installer-cache/` — your CO profiles, session history, panic-revert state, and installer-managed third-party stay exactly where they are.
+3. On `Y`: downloads the release's zip (prefers an attached `.zip` asset if the maintainer uploaded one, otherwise the auto-generated source zip for that tag), snapshots the existing top-level tree into `installer-cache/backups/{old-version}-{timestamp}/`, then overlays. **Never touches** `runtime/`, `profiles/`, `corecycler/`, `vendor/`, or `installer-cache/` — your CO profiles, session history, panic-revert state, and installer-managed third-party stay exactly where they are.
 
-**Refuses to run** if another instance is listening on `127.0.0.1:8765` (would dead-lock DLL handles) or if a panic-revert / RUNNING `tune-session.json` is on disk (would orphan an in-flight test process).
+**Refuses to run** if another instance is listening on `127.0.0.1:8765` (would dead-lock DLL handles) or if a panic-revert / RUNNING `tune-session.json` is on disk (would orphan an in-flight test process). Pre-releases are skipped — only stable releases are offered to the auto-updater. If no releases exist yet (bootstrap case before the first publish), the updater falls back to parsing the version constant from raw `main/server.ps1` so a fresh clone can still self-update.
 
 To force a check between scheduled probes (e.g. you skipped a version and want to re-check), run **`Update.bat`** — it bypasses both the 6 h rate-limit and any skip-version marker.
 
