@@ -10,6 +10,8 @@
   "header.help": "ヘルプ",
   "header.reset_co": "🔴 CO リセット",
   "header.reset_co_title": "すべての CO を 0 にリセット(または Esc キー)",
+  "header.reset_bios": "🔄 BIOS 値",
+  "header.reset_bios_title": "CO を BIOS で設定された値に戻す(サーバー起動時のスナップショット)",
 
   "section.set_co": "1. Curve Optimizer の設定",
   "section.test_stability": "2. テストと安定性自動調整",

@@ -10,6 +10,8 @@
   "header.help": "مساعدة",
   "header.reset_co": "🔴 إعادة تعيين CO",
   "header.reset_co_title": "إعادة تعيين جميع قيم CO إلى 0 (أو اضغط Esc)",
+  "header.reset_bios": "🔄 قيم BIOS",
+  "header.reset_bios_title": "استعادة قيم CO إلى القيم المعينة في BIOS (لقطة تم التقاطها عند البدء)",
 
   "section.set_co": "1. ضبط Curve Optimizer",
   "section.test_stability": "2. الاختبار والضبط التلقائي للاستقرار",

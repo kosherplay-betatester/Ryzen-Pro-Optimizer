@@ -1568,6 +1568,7 @@ document.addEventListener('click', async e => {
       pendingApplyBody = null;
       break;
     case 'revert-co': revertCo(); break;
+    case 'reset-bios': revertCo(); break;
     case 'reset-co': resetCo(); break;
     case 'start-test': startTest(); break;
     case 'stop-test': stopTest(); break;

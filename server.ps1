@@ -30,7 +30,7 @@ $ErrorActionPreference = 'Stop'
 
 # App version. Bumped manually per release; surfaced via /api/version
 # and shown in the UI footer. Keep in sync with CHANGELOG.md.
-$script:AppVersion = '0.8.0'
+$script:AppVersion = '0.8.1'
 
 # Project root
 $RepoRoot = $PSScriptRoot
@@ -429,14 +429,27 @@ Register-Route -Method POST -Path '/api/test/start' -Handler {
         if ($body.PSObject.Properties['autoMax']) { $autoMax = [int]$body.autoMax }
         if ($body.PSObject.Properties['autoInc']) { $autoInc = [int]$body.autoInc }
         if ($coReady) {
-            $autoStart = Get-AllCoreCo -CoreCount $cpu.Cores
-            # Snapshot the current CO as a regular profile so the user can roll
-            # back if Auto-Adjust converges somewhere worse than the starting
-            # point. Best-effort: never block the test on a snapshot failure.
+            # Snapshot whatever the user had set BEFORE we reset, so they
+            # can roll back to it via the auto-saved profile.
+            $preTune = Get-AllCoreCo -CoreCount $cpu.Cores
             try {
-                Save-PreTuneSnapshot -Process 'auto-adjust' -CurrentValues $autoStart `
+                Save-PreTuneSnapshot -Process 'auto-adjust' -CurrentValues $preTune `
                     -CpuModel $cpu.Name -CcdCount $cpu.CcdCount | Out-Null
             } catch { Write-Log WARN "Pre-Auto-Adjust snapshot failed: $($_.Exception.Message)" }
+            # Reset SMU to launch (BIOS) values before Auto-Adjust kicks in,
+            # so the tune always starts from a known-safe baseline regardless
+            # of what the user had manually set during this session. The
+            # auto-saved profile above lets them get their tuned-state back
+            # later if they want it.
+            if ($null -ne $launchSnapshot) {
+                try {
+                    Set-AllCoreCo -Values $launchSnapshot
+                    Write-Log INFO "Auto-Adjust: SMU reset to launch (BIOS) values before starting test"
+                } catch {
+                    Write-Log WARN "Pre-Auto-Adjust BIOS reset failed (continuing): $($_.Exception.Message)"
+                }
+            }
+            $autoStart = Get-AllCoreCo -CoreCount $cpu.Cores
         }
     }
 
@@ -611,6 +624,18 @@ Register-Route -Method POST -Path '/api/smart-tune/start' -Handler {
             Save-PreTuneSnapshot -Process 'smart-tune' -CurrentValues $currentCo `
                 -CpuModel $cpu.Name -CcdCount $cpu.CcdCount | Out-Null
         } catch { Write-Log WARN "Pre-Smart-Tune snapshot failed: $($_.Exception.Message)" }
+        # Reset SMU to launch (BIOS) values before the bisection picks up,
+        # so probes always start from a known-safe baseline regardless of
+        # whatever the user had manually set. The auto-saved profile above
+        # carries their pre-tune state if they want to return to it later.
+        if ($coReady -and $null -ne $launchSnapshot) {
+            try {
+                Set-AllCoreCo -Values $launchSnapshot
+                Write-Log INFO "Smart Tune: SMU reset to launch (BIOS) values before bisection"
+            } catch {
+                Write-Log WARN "Pre-Smart-Tune BIOS reset failed (continuing): $($_.Exception.Message)"
+            }
+        }
 
         Start-SmartTune -Cpu $cpu -Mode $mode -Direction $direction `
             -SessionPath $script:SmartTuneSessionPath -HistoryPath $script:SmartTuneHistoryPath `

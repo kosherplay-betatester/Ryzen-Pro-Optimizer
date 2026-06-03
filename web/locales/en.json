@@ -10,6 +10,8 @@
   "header.help": "Help",
   "header.reset_co": "🔴 RESET CO",
   "header.reset_co_title": "Reset all CO to 0 (or press Esc)",
+  "header.reset_bios": "🔄 BIOS values",
+  "header.reset_bios_title": "Restore CO to the values set in BIOS (the snapshot the server captured at launch)",
 
   "section.set_co": "1. Set Curve Optimizer",
   "section.test_stability": "2. Test & Autotune Stability",

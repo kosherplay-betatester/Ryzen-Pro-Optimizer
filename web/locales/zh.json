@@ -10,6 +10,8 @@
   "header.help": "帮助",
   "header.reset_co": "🔴 重置 CO",
   "header.reset_co_title": "将所有 CO 重置为 0(或按 Esc 键)",
+  "header.reset_bios": "🔄 BIOS 值",
+  "header.reset_bios_title": "将 CO 恢复为 BIOS 中设置的值(服务器启动时拍摄的快照)",
 
   "section.set_co": "1. 设置 Curve Optimizer",
   "section.test_stability": "2. 测试与自动调整稳定性",

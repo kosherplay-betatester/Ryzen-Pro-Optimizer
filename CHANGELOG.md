@@ -8,6 +8,45 @@ hit 1.0 yet — see the roadmap in [README.md](README.md#roadmap).
 
 ---
 
+## [0.8.1] — 2026-06-03 · "RTL polish · BIOS-baseline tests · BIOS reset button"
+
+Three small but load-bearing follow-ups to 0.8.0 based on real-use feedback.
+
+### New
+
+- **🔄 BIOS values** button in the header — always visible (no need to
+  scroll to the Set CO card). Restores the SMU to the launch snapshot
+  (= whatever values BIOS had set when the server first booted). Sits
+  next to the existing 🔴 RESET CO so the two recovery actions are
+  side-by-side: BIOS values = back to the safe baseline you booted
+  with; RESET CO = all zeros (more aggressive safety net). Translated
+  in all 9 locales.
+- **Auto-Adjust and Smart Auto-Adjust now reset SMU to launch (BIOS)
+  values before starting**, so probes always begin from a known-safe
+  baseline regardless of whatever the user had manually applied this
+  session. The previous state isn't lost — it's auto-saved as a
+  `pre-auto-adjust-…` / `pre-smart-tune-…` profile before the reset, so
+  the user can load it back from the Profiles list. Predictable starting
+  point makes tune results reproducible across sessions. Manual test
+  mode keeps current behaviour (it explicitly stresses whatever the user
+  set).
+
+### Fixed
+
+- **RTL layout polish** for Hebrew and Arabic. Physical `left`/`right`
+  CSS properties throughout `style.css` swapped to logical
+  (`inline-start`/`inline-end`): accent borders on info boxes,
+  profile details, apply summaries, safety banners, theater scopes,
+  bios steps; table column alignment; the help panel slide-out (now
+  pins to the inline-end so it slides from the right in LTR and from
+  the left in RTL with a flipped shadow + translateX); `#close-help`
+  and the chart-title absolute positioning; list indents. Asymmetric
+  `border-radius: 0 4px 4px 0` shorthand has an explicit RTL override
+  block to mirror to `4px 0 0 4px` so the rounded side stays opposite
+  the accent border in both directions.
+
+---
+
 ## [0.8.0] — 2026-06-03 · "Full-width two-column layout + 9-language i18n"
 
 Two-piece release that reshapes the UI for wide screens and adds

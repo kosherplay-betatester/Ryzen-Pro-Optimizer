@@ -10,6 +10,8 @@
   "header.help": "Помощь",
   "header.reset_co": "🔴 СБРОС CO",
   "header.reset_co_title": "Сбросить все CO к 0 (или нажмите Esc)",
+  "header.reset_bios": "🔄 Значения BIOS",
+  "header.reset_bios_title": "Восстановить CO к значениям, заданным в BIOS (снимок, сделанный при запуске)",
 
   "section.set_co": "1. Настройка Curve Optimizer",
   "section.test_stability": "2. Тест и автонастройка стабильности",

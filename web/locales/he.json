@@ -10,6 +10,8 @@
   "header.help": "עזרה",
   "header.reset_co": "🔴 איפוס CO",
   "header.reset_co_title": "איפוס כל ערכי ה-CO ל-0 (או לחיצה על Esc)",
+  "header.reset_bios": "🔄 ערכי BIOS",
+  "header.reset_bios_title": "שחזור ערכי CO לאלה שהוגדרו ב-BIOS (תמונה שצולמה בעת ההפעלה)",
 
   "section.set_co": "1. הגדרת Curve Optimizer",
   "section.test_stability": "2. בדיקה וכוונון יציבות",

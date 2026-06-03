@@ -10,6 +10,8 @@
   "header.help": "Aide",
   "header.reset_co": "🔴 RÉINITIALISER CO",
   "header.reset_co_title": "Réinitialiser tous les CO à 0 (ou appuyer sur Échap)",
+  "header.reset_bios": "🔄 Valeurs du BIOS",
+  "header.reset_bios_title": "Restaurer les CO aux valeurs définies dans le BIOS (snapshot capturé au démarrage)",
 
   "section.set_co": "1. Définir Curve Optimizer",
   "section.test_stability": "2. Tester et régler la stabilité",

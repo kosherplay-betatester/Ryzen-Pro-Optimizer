@@ -10,6 +10,8 @@
   "header.help": "Ayuda",
   "header.reset_co": "🔴 RESTABLECER CO",
   "header.reset_co_title": "Restablecer todos los CO a 0 (o pulsar Esc)",
+  "header.reset_bios": "🔄 Valores BIOS",
+  "header.reset_bios_title": "Restaurar CO a los valores establecidos en la BIOS (captura realizada al iniciar)",
 
   "section.set_co": "1. Configurar Curve Optimizer",
   "section.test_stability": "2. Probar y autoajustar estabilidad",
