@@ -75,6 +75,16 @@ header {
 }
 .brand { display: flex; align-items: center; gap: 0.6rem; }
 .brand .logo { font-size: 1.4rem; color: var(--accent); }
+/* AMD Ryzen logo - sized to match the H1's optical weight so logo +
+   wordmark read as one balanced lockup. Uses logical max-height so a
+   future SVG swap can change aspect ratio without redoing the rule.
+   PNG already has alpha so no background trickery needed. */
+.brand-logo {
+  height: 1.8rem;
+  width: auto;
+  display: block;
+  flex-shrink: 0;
+}
 h1 { font-size: 1.25rem; margin: 0; color: var(--text); font-weight: 600; }
 h2 { font-size: 1rem; margin: 0 0 0.8rem; color: var(--accent); font-weight: 600; }
 h3 { font-size: 0.9rem; margin: 1rem 0 0.4rem; color: var(--text); }
