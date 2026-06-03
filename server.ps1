@@ -30,7 +30,7 @@ $ErrorActionPreference = 'Stop'
 
 # App version. Bumped manually per release; surfaced via /api/version
 # and shown in the UI footer. Keep in sync with CHANGELOG.md.
-$script:AppVersion = '0.7.1'
+$script:AppVersion = '0.7.2'
 
 # Project root
 $RepoRoot = $PSScriptRoot
@@ -374,16 +374,39 @@ Register-Route -Method POST -Path '/api/profiles/{name}/apply' -Handler {
 }
 
 Register-Route -Method GET -Path '/api/telemetry' -Handler {
+    # Wrapped because Read-TelemetrySnapshot drives LHM sensor enumeration,
+    # and an LHM sensor stuck in a bad state (driver hiccup, hardware
+    # contention with CoreCycler during a tune, etc.) historically left
+    # the response hanging - Chrome would RST the TCP connection after
+    # a few seconds, the polling loop client-side would log
+    # ERR_CONNECTION_RESET on a 1s cadence, and the only fix was a
+    # server restart. Catching here turns a hang/crash into a clean
+    # JSON error response that the UI can render and recover from.
     if (-not (Test-TelemetryAvailable)) { return @{ ok = $false; error = 'Telemetry unavailable' } }
-    @{ ok = $true; data = (Read-TelemetrySnapshot) }
+    try {
+        @{ ok = $true; data = (Read-TelemetrySnapshot) }
+    } catch {
+        Write-Log WARN "/api/telemetry handler failed (LHM hiccup?): [$($_.Exception.GetType().FullName)] $($_.Exception.Message)"
+        @{ ok = $false; error = "Telemetry read failed: $($_.Exception.Message)" }
+    }
 }
 
 Register-Route -Method GET -Path '/api/telemetry/history' -Handler {
-    @{ ok = $true; data = (Get-TelemetryHistory) }
+    try {
+        @{ ok = $true; data = (Get-TelemetryHistory) }
+    } catch {
+        Write-Log WARN "/api/telemetry/history failed: $($_.Exception.Message)"
+        @{ ok = $false; error = "History read failed: $($_.Exception.Message)" }
+    }
 }
 
 Register-Route -Method GET -Path '/api/telemetry/peaks' -Handler {
-    @{ ok = $true; data = (Get-Peaks) }
+    try {
+        @{ ok = $true; data = (Get-Peaks) }
+    } catch {
+        Write-Log WARN "/api/telemetry/peaks failed: $($_.Exception.Message)"
+        @{ ok = $false; error = "Peaks read failed: $($_.Exception.Message)" }
+    }
 }
 
 Register-Route -Method POST -Path '/api/test/start' -Handler {

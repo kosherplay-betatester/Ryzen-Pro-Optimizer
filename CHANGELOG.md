@@ -8,6 +8,28 @@ hit 1.0 yet — see the roadmap in [README.md](README.md#roadmap).
 
 ---
 
+## [0.7.2] — 2026-06-03 · "Telemetry handler hardening"
+
+Defensive fix only — no behaviour or UI changes.
+
+### Fixed
+
+- **`/api/telemetry`, `/api/telemetry/history`, `/api/telemetry/peaks`
+  no longer return `ERR_CONNECTION_RESET` when LHM hiccups.** The three
+  routes called into `Read-TelemetrySnapshot` / `Get-TelemetryHistory`
+  / `Get-Peaks` with no error handling; if a LibreHardwareMonitor
+  sensor enumeration threw (driver glitch, SMU contention while a tune
+  was running) the response never sent and the OS reset the TCP
+  connection. The polling loop client-side logged `ERR_CONNECTION_RESET`
+  on a 1Hz cadence and the only fix was a server restart. Each handler
+  now wraps its body in a try/catch and turns a throw into a clean
+  `{ ok: false, error: "..." }` 200 the UI can render and retry from.
+  Hangs in the LHM call (sensor stuck rather than throwing) still
+  require a restart - timing those out needs an async pattern that's a
+  bigger change.
+
+---
+
 ## [0.7.1] — 2026-06-03 · "Tune Results table + report-mode default"
 
 Smart Auto-Adjust now ships with an explicit per-core results view and a
