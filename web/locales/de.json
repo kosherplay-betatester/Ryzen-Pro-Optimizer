@@ -91,6 +91,9 @@
   "toasts.discarded": "Verworfen",
 
   "disclaimer.title": "Vor dem Tuning lesen",
+  "disclaimer.lead": "Ryzen Pro Optimizer schreibt in die SMU-Register deiner CPU und führt intensive Stresstests durch. Diese Aktionen können dein System zum Absturz bringen. Mit dem Fortfahren akzeptierst du die folgenden Risiken:",
+  "disclaimer.safety_nets": "Deine Sicherheitsnetze: die Esc-Panik-Reset-Taste, der immer sichtbare CO ZURÜCKSETZEN-Button, der Sicherheitsbegrenzer (bricht automatisch bei Temp/Spannung/WHEA-Überschreitung ab), der Panic-Revert-Breadcrumb (überlebt BSODs, damit der nächste Boot zurücksetzen kann), und das BIOS — das beim nächsten Power-Zyklus immer gewinnt.",
+  "disclaimer.use_at_risk": "Verwendung auf eigenes Risiko. Die Autoren und Mitwirkenden haften nicht für Schäden, Datenverlust oder Ausfallzeiten. Wenn du damit nicht einverstanden bist, schließe diesen Tab jetzt.",
   "disclaimer.accept": "Ich verstehe die Risiken · Fortfahren",
   "disclaimer.decline": "Tab schließen",
   "disclaimer.dont_show": "Dies in diesem Browser nicht mehr anzeigen (über Einstellungen wiederherstellbar)",
@@ -127,6 +130,11 @@
   "labels.stress_test_short": "Stresstest:",
   "labels.cycles_short": "Zyklen:",
 
+  "desc.test_cycles_hint": "Standard: 1 Zyklus. 3+ Zyklen für zuverlässige Stabilität empfohlen. Auto-Tuning profitiert in der Regel von längeren Läufen (10+), damit jeder Kern mehrere Chancen bekommt.",
+  "desc.whea_abort": "Wenn während des Auto-Tunings ein WHEA-Hardware-Fehlerereignis auftritt, sofort anhalten, einen Schritt am betroffenen Kern zurück, und neuen Snapshot. Standardmäßig an.",
+  "desc.audio_alert": "Spielt einen kurzen Browser-Piepton ab, wenn etwas Gefährliches passiert — nützlich, wenn du während eines langen Laufs nicht am Schreibtisch bist.",
+  "desc.tabclose_warn": "Standardmäßig deaktiviert. Chromes Speicher-Sparen und RDP-Verbindungsabbrüche sehen aus wie ein geschlossener Tab und würden sonst den Dienst mitten im Test beenden. Wenn aktiviert, setzt der Server CO auf Startwerte zurück und fährt nach 3 Minuten Heartbeat-Stille herunter. Nur auf einer dedizierten Tuning-Workbench empfohlen, wo du dem Browser vertraust, im Vordergrund zu bleiben.",
+  "desc.escshutdown": "Wenn aktiviert, setzt Esc weiterhin CO sofort auf 0 zurück, beendet aber auch den Server. Wenn deaktiviert (Standard), ist Esc nur ein Panik-Reset und der Dienst bleibt aktiv.",
   "desc.smart_tune_hint": "Intelligentes Auto-Tuning verwendet Bisection + Telemetrie + Absturz-Historie. Im Tuning-Theater siehst du den Live-Fortschritt und in den Tuning-Ergebnissen das Urteil pro Kern.",
   "desc.live_co_what": "Was der Chip gerade ausführt — nützlich während Auto-Tuning Dinge ändert. Nicht das, was im BIOS steht; SMU-Werte bis zum nächsten Neustart.",
   "desc.safety_intro": "Harte Limits, die das Auto-Tuning sofort beim Überschreiten abbrechen. Zusammen mit dem WHEA Bodyguard verhindern sie das stille Abrutschen in einen BSOD, das eine Remote-Sitzung verbergen kann.",

@@ -138,6 +138,8 @@
   "desc.settings_saved": "Les paramètres sont sauvegardés dans votre navigateur (localStorage) — ils survivent aux rechargements.",
   "desc.whea_abort": "Quand un événement WHEA d'erreur matérielle se déclenche pendant l'auto-réglage, arrêter immédiatement, reculer d'un cran sur le cœur fautif et reprendre un instantané. Activé par défaut.",
   "desc.audio_alert": "Joue un bip court du navigateur quand quelque chose de dangereux arrive — utile si vous êtes loin du bureau pendant un long run.",
+  "desc.tabclose_warn": "Désactivé par défaut. L'économiseur de mémoire de Chrome et les déconnexions RDP ressemblent à un onglet fermé et tueraient sinon le service en plein test. Quand activé, le serveur restaure les CO aux valeurs de lancement et s'éteint après 3 minutes de silence du heartbeat. Recommandé uniquement sur un banc de réglage dédié où vous faites confiance au navigateur pour rester au premier plan.",
+  "desc.escshutdown": "Quand activé, Échap réinitialise toujours les CO à 0 instantanément, mais démantèle aussi le serveur. Quand désactivé (défaut), Échap n'est qu'une réinitialisation panique et le service reste actif.",
 
   "settings.tabclose_main": "Fermer l'onglet/fenêtre du navigateur arrête le service",
   "settings.escshutdown_main": "La touche Échap arrête le service (en plus de réinitialiser CO)",

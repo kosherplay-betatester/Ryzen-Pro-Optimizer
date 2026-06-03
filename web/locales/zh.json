@@ -91,6 +91,9 @@
   "toasts.discarded": "已放弃",
 
   "disclaimer.title": "调整前请阅读",
+  "disclaimer.lead": "Ryzen Pro Optimizer 会写入 CPU 的 SMU 寄存器并运行密集的压力测试。这些操作可能导致系统崩溃。继续即表示你接受以下风险:",
+  "disclaimer.safety_nets": "你的安全网:Esc 紧急重置键、始终可见的重置 CO 按钮、安全防护(在温度/电压/WHEA 超限时自动中止)、panic-revert 面包屑(可在 BSOD 后存留,下次启动可回滚),以及 BIOS — 它总是在下次开机时获胜。",
+  "disclaimer.use_at_risk": "使用风险自负。作者和贡献者对任何损坏、数据丢失或停机概不负责。如果你不接受此条件,请立即关闭此标签页。",
   "disclaimer.accept": "我了解风险 · 继续",
   "disclaimer.decline": "关闭标签页",
   "disclaimer.dont_show": "不再在此浏览器显示(可在设置中重置)",
@@ -127,6 +130,11 @@
   "labels.stress_test_short": "压力测试:",
   "labels.cycles_short": "循环次数:",
 
+  "desc.test_cycles_hint": "默认 1 个循环。推荐 3+ 循环以获得可靠的稳定性。自动调整通常受益于较长的运行(10+),让每个核心有多次机会。",
+  "desc.whea_abort": "当自动调整期间发生 WHEA 硬件错误事件时,立即停止,在违规核心上后退一个增量,并重新拍摄快照。默认开启。",
+  "desc.audio_alert": "发生危险事件时播放短暂的浏览器蜂鸣声 — 在长时间运行期间离开桌面时很有用。",
+  "desc.tabclose_warn": "默认禁用。Chrome 的内存节省器和 RDP 断开看起来像标签页关闭,否则会在测试中途杀掉服务。启用时,服务器在 3 分钟 heartbeat 静默后将 CO 恢复为启动值并关闭。仅推荐在专用调整工作台上使用,你信任浏览器会保持在前台。",
+  "desc.escshutdown": "启用时,Esc 仍会立即将 CO 重置为 0,但也会拆除服务器。禁用时(默认),Esc 只是紧急重置,服务保持运行。",
   "desc.smart_tune_hint": "智能自动调整使用二分查找 + 遥测 + 崩溃历史。查看调整剧院获取实时进度,查看调整结果卡片获取每核心结论。",
   "desc.live_co_what": "芯片现在正在运行的值 — 在自动调整改变东西时很有用。不是 BIOS 中的值;SMU 值会保持到下次重启。",
   "desc.safety_intro": "超过即中止自动调整的硬性限制。结合 WHEA Bodyguard,可防止远程会话可能掩盖的静默滑向 BSOD。",

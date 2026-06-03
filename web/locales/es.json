@@ -91,6 +91,9 @@
   "toasts.discarded": "Descartado",
 
   "disclaimer.title": "Lee esto antes de ajustar",
+  "disclaimer.lead": "Ryzen Pro Optimizer escribe en los registros SMU de tu CPU y ejecuta pruebas de estrés intensas. Estas acciones pueden colgar tu sistema. Al continuar, aceptas los siguientes riesgos:",
+  "disclaimer.safety_nets": "Tus redes de seguridad: la tecla Esc de pánico, el botón RESTABLECER CO siempre visible, el Guardia de Seguridad (aborta automáticamente al superar temp/voltaje/WHEA), la migaja panic-revert (sobrevive a BSODs para revertir en el próximo arranque), y la BIOS — que siempre gana en el próximo ciclo de encendido.",
+  "disclaimer.use_at_risk": "Úsalo bajo tu propio riesgo. Los autores y colaboradores no se hacen responsables de ningún daño, pérdida de datos o tiempo de inactividad. Si no te sientes cómodo con eso, cierra esta pestaña ahora.",
   "disclaimer.accept": "Entiendo los riesgos · Continuar",
   "disclaimer.decline": "Cerrar pestaña",
   "disclaimer.dont_show": "No mostrar esto de nuevo en este navegador (puedes restablecerlo en Ajustes)",
@@ -127,6 +130,11 @@
   "labels.stress_test_short": "Prueba de estrés:",
   "labels.cycles_short": "Ciclos:",
 
+  "desc.test_cycles_hint": "1 ciclo por defecto. 3+ ciclos recomendados para una estabilidad confiable. El autoajuste se beneficia normalmente de ejecuciones más largas (10+) para que cada núcleo tenga varias oportunidades.",
+  "desc.whea_abort": "Cuando un evento WHEA de error de hardware se dispara durante el autoajuste, detener inmediatamente, retroceder un incremento en el núcleo culpable, y volver a tomar instantánea. Activado por defecto.",
+  "desc.audio_alert": "Reproduce un pitido corto del navegador cuando ocurre algo peligroso — útil si estás lejos del escritorio durante una ejecución larga.",
+  "desc.tabclose_warn": "Desactivado por defecto. El ahorrador de memoria de Chrome y las desconexiones RDP parecen una pestaña cerrada y de otro modo matarían el servicio a mitad de prueba. Cuando está activado, el servidor revierte el CO a los valores de inicio y se apaga tras 3 minutos de silencio del heartbeat. Recomendado solo en un banco de ajuste dedicado donde confíes en que el navegador permanecerá en primer plano.",
+  "desc.escshutdown": "Cuando está activado, Esc sigue restableciendo CO a 0 instantáneamente, pero también detiene el servidor. Cuando está desactivado (por defecto), Esc es solo un restablecimiento de pánico y el servicio permanece activo.",
   "desc.smart_tune_hint": "El autoajuste inteligente usa bisección + telemetría + historial de cuelgues. Mira el Teatro de ajuste para el progreso en vivo y los Resultados del ajuste para el veredicto por núcleo.",
   "desc.live_co_what": "Lo que el chip está ejecutando ahora mismo — útil mientras el autoajuste está cambiando cosas. No es lo que está en la BIOS; valores del SMU hasta el próximo reinicio.",
   "desc.safety_intro": "Límites duros que abortan el autoajuste en el instante en que se exceden. Combinados con el WHEA Bodyguard, evitan el deslizamiento silencioso a BSOD que una sesión remota puede dejar ciega.",
