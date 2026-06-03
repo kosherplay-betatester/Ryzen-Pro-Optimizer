@@ -1350,6 +1350,18 @@ async function pollStatus() {
     const r = await fetchJson('/api/status');
     const s = r.data;
     stateName = s.state;
+    // A page refresh during an active tune used to leave the recovery
+    // card up (it had been added on load, before polling caught up to
+    // state). Now any time we see TESTING/STOPPING, dismiss it: the
+    // session isn't "pending recovery", it's running. The Tune Theater
+    // and Live CO continue to surface the real progress.
+    if (s.state === 'TESTING' || s.state === 'STOPPING' || s.state === 'REPORTING') {
+      const rec = document.getElementById('smart-pending-card');
+      if (rec) {
+        rec.remove();
+        document.getElementById('recovery-badge')?.remove();
+      }
+    }
     if (s.state === 'TESTING' || s.state === 'STOPPING') {
       // Card was made visible by startTest. Three render states:
       //  1. s.live null      -> CoreCycler hasn't created its log

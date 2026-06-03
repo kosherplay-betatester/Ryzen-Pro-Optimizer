@@ -640,6 +640,9 @@ Register-Route -Method POST -Path '/api/smart-tune/start' -Handler {
         Start-SmartTune -Cpu $cpu -Mode $mode -Direction $direction `
             -SessionPath $script:SmartTuneSessionPath -HistoryPath $script:SmartTuneHistoryPath `
             -ApplyMode $applyMode
+        # Clear the recovery-card prompt - any pending-session from a
+        # previous boot is superseded by this fresh tune.
+        $script:PendingSmartSession = $null
         Set-CurrentState -NewState 'TESTING' -Data @{
             startedAt = (Get-Date -Format 'o')
             smartTune = $true
@@ -788,6 +791,17 @@ Register-Route -Method GET -Path '/api/smart-tune/history' -Handler {
 }
 
 Register-Route -Method GET -Path '/api/smart-tune/pending-session' -Handler {
+    # Only surface the recovery card when there's actually something to
+    # recover. If state is TESTING/STOPPING, a tune is running right now
+    # - browser refresh shouldn't have shown a "paused" prompt that
+    # tries to resume something already in flight. If state is
+    # REPORTING, the session is already settled and the Tune Results
+    # card is the right surface, not the recovery card. Only IDLE
+    # warrants showing pending-session data.
+    $cur = (Get-CurrentState).state
+    if ($cur -eq 'TESTING' -or $cur -eq 'STOPPING' -or $cur -eq 'REPORTING') {
+        return @{ ok = $true; data = $null }
+    }
     @{ ok = $true; data = $script:PendingSmartSession }
 }
 
