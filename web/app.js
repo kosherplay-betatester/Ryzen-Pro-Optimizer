@@ -37,6 +37,149 @@ let currentMode = 'all-cores';
 let lastWheaCount = 0;
 let stateName = 'IDLE';
 
+// =============================================================================
+//  i18n - translates load-bearing UI strings from /locales/{lang}.json
+// =============================================================================
+//  Strategy:
+//    - Strings carry data-i18n="namespace.key" (text content) or
+//      data-i18n-attr="attrname|namespace.key" (attribute value, e.g. title).
+//    - At boot we detect language: localStorage > navigator.language >
+//      'en'. Lookup falls through current language -> English -> the
+//      raw key, so a partially-translated locale still renders.
+//    - RTL languages (he, ar) flip <html dir>; CSS handles layout
+//      mirroring via logical properties + dir-aware rules in style.css.
+//    - The language switcher is in the header; choice persists in
+//      localStorage and applies immediately without reload.
+// =============================================================================
+const i18n = (() => {
+  const SUPPORTED = ['en','fr','es','de','ru','he','ar','zh','ja'];
+  const RTL = new Set(['he','ar']);
+  let current = 'en';
+  let strings = {};
+  let englishFallback = {};
+
+  function detect() {
+    const saved = localStorage.getItem('rpo.lang');
+    if (saved && SUPPORTED.includes(saved)) return saved;
+    const b = (navigator.language || 'en').slice(0, 2).toLowerCase();
+    return SUPPORTED.includes(b) ? b : 'en';
+  }
+
+  async function fetchLocale(lang) {
+    const r = await fetch(`/locales/${lang}.json`);
+    if (!r.ok) throw new Error(`HTTP ${r.status}`);
+    return r.json();
+  }
+
+  // Load English first as the fallback dictionary, then the requested
+  // language. If the requested language is English, we just reuse the
+  // already-fetched dict so we don't make two identical requests.
+  async function load(lang) {
+    if (!SUPPORTED.includes(lang)) lang = 'en';
+    try {
+      if (Object.keys(englishFallback).length === 0) {
+        englishFallback = await fetchLocale('en');
+      }
+      strings = (lang === 'en') ? englishFallback : await fetchLocale(lang);
+      current = lang;
+      localStorage.setItem('rpo.lang', lang);
+      document.documentElement.lang = lang;
+      document.documentElement.dir = RTL.has(lang) ? 'rtl' : 'ltr';
+      apply();
+    } catch (e) {
+      console.warn(`i18n: failed to load ${lang}:`, e);
+      if (lang !== 'en') return load('en');
+    }
+  }
+
+  // Lookup with English fallback. `{0}`, `{1}`, ... are positional
+  // substitutions. Returns the raw key when not found anywhere - that
+  // way unknown keys are visible (not invisible) in development.
+  function t(key, ...args) {
+    let s = strings[key];
+    if (s == null) s = englishFallback[key];
+    if (s == null) s = key;
+    args.forEach((a, i) => { s = s.split(`{${i}}`).join(String(a)); });
+    return s;
+  }
+
+  // Apply current translations to every element flagged with
+  // data-i18n / data-i18n-attr / data-i18n-html. Safe to re-run; we
+  // call it on language change and after dynamic DOM additions.
+  function apply() {
+    document.querySelectorAll('[data-i18n]').forEach(el => {
+      el.textContent = t(el.dataset.i18n);
+    });
+    document.querySelectorAll('[data-i18n-attr]').forEach(el => {
+      // Pipe-separated "attrname|key" lets one element translate any
+      // attribute (title, placeholder, aria-label, ...).
+      const spec = el.dataset.i18nAttr;
+      const pipe = spec.indexOf('|');
+      if (pipe < 0) return;
+      el.setAttribute(spec.slice(0, pipe), t(spec.slice(pipe + 1)));
+    });
+    document.querySelectorAll('[data-i18n-html]').forEach(el => {
+      el.innerHTML = t(el.dataset.i18nHtml);
+    });
+  }
+
+  return { detect, load, t, apply, current: () => current, SUPPORTED, RTL };
+})();
+
+// =============================================================================
+//  Layout: reorganise <main> into two columns + full-width recovery host
+// =============================================================================
+//  Source order stays roughly semantic (better for screen readers and
+//  diffs); a one-shot DOM move at boot puts each section into the right
+//  column. CSS Grid does the column split.
+//
+//  Left column: live data / metrics / results
+//  Right column: controls / configuration / settings
+//  Recovery host (#recovery-host) is already in the HTML, spans full
+//  width via .col-fullwidth so panic-revert and Smart Tune paused
+//  banners read prominently across both columns.
+// =============================================================================
+const LAYOUT_LEFT_IDS = [
+  'cpu-info', 'not-supported',
+  'telemetry-strip', 'telemetry-expanded',
+  'safety-banner',
+  'tune-theater', 'tune-results-card',
+  'pro-dashboard', 'pro-toggle',
+  'live-co-card',
+  'status-card', 'report-card'
+];
+const LAYOUT_RIGHT_IDS = [
+  'co-banner', 'bios-setup-card',
+  'curve-card', 'test-card',
+  'profiles-card',
+  'safety-card', 'settings-card'
+];
+
+function applyTwoColumnLayout() {
+  const main = document.querySelector('main');
+  if (!main || main.dataset.twoCol === '1') return;
+  const recoveryHost = document.getElementById('recovery-host');
+  if (recoveryHost) recoveryHost.classList.add('col-fullwidth');
+
+  const left = document.createElement('div');
+  left.className = 'col-left';
+  const right = document.createElement('div');
+  right.className = 'col-right';
+
+  LAYOUT_LEFT_IDS.forEach(id => {
+    const el = document.getElementById(id);
+    if (el) left.appendChild(el);
+  });
+  LAYOUT_RIGHT_IDS.forEach(id => {
+    const el = document.getElementById(id);
+    if (el) right.appendChild(el);
+  });
+
+  main.appendChild(left);
+  main.appendChild(right);
+  main.dataset.twoCol = '1';
+}
+
 async function fetchJson(url, opts) {
   const r = await fetch(url, opts);
   let json;
@@ -1630,7 +1773,7 @@ async function checkPanicRevert() {
     banner.className = 'card recovery-card';
     banner.id = 'panic-revert-card';
     banner.innerHTML = html;
-    document.querySelector('main').insertBefore(banner, document.querySelector('main').firstChild);
+    (document.getElementById('recovery-host') || document.querySelector('main')).appendChild(banner);
     showRecoveryBadge('Crash recovery available');
     banner.scrollIntoView({ behavior: 'smooth', block: 'start' });
   } catch (_) {}
@@ -1728,7 +1871,7 @@ async function checkPendingSmartSession() {
     banner.id = 'smart-pending-card';
     banner.dataset.lastGood = JSON.stringify(lastGood);
     banner.innerHTML = html;
-    document.querySelector('main').insertBefore(banner, document.querySelector('main').firstChild);
+    (document.getElementById('recovery-host') || document.querySelector('main')).appendChild(banner);
     // Surface a header badge so the user notices recovery options even
     // if they're scrolled away from the top - they ARE easy to miss
     // mixed in with the regular card stream.
@@ -1882,6 +2025,18 @@ document.addEventListener('click', e => {
 
 document.addEventListener('DOMContentLoaded', async () => {
   try {
+    // Layout + i18n FIRST so the user never sees a flash of single-column
+    // English UI when their browser is set to e.g. French. Both are
+    // synchronous-ish (i18n.load() fetches one JSON file).
+    applyTwoColumnLayout();
+    const initialLang = i18n.detect();
+    const switcher = document.getElementById('lang-switcher');
+    if (switcher) {
+      switcher.value = initialLang;
+      switcher.addEventListener('change', e => i18n.load(e.target.value));
+    }
+    await i18n.load(initialLang);
+
     // Disclaimer comes first - if not accepted, show it. Initial loads
     // still happen behind it (the overlay just blocks interaction).
     if (!disclaimerAlreadyAccepted()) showDisclaimer();

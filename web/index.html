@@ -89,16 +89,31 @@
 <header>
   <div class="brand">
     <span class="logo">⚡</span>
-    <h1>Ryzen Pro Optimizer</h1>
+    <h1 data-i18n="app.title">Ryzen Pro Optimizer</h1>
   </div>
   <div class="header-actions">
-    <span id="bodyguard" class="bodyguard" title="WHEA Bodyguard"><span class="dot"></span> Bodyguard</span>
-    <button id="open-help" class="secondary" title="Help">?</button>
-    <button id="reset-co" class="danger" title="Reset all CO to 0 (or press Esc)">🔴 RESET CO</button>
+    <select id="lang-switcher" class="lang-switcher" data-i18n-attr="title|lang.switcher_title" title="Change the UI language" aria-label="Language">
+      <option value="en">English</option>
+      <option value="fr">Français</option>
+      <option value="es">Español</option>
+      <option value="de">Deutsch</option>
+      <option value="ru">Русский</option>
+      <option value="he">עברית</option>
+      <option value="ar">العربية</option>
+      <option value="zh">简体中文</option>
+      <option value="ja">日本語</option>
+    </select>
+    <span id="bodyguard" class="bodyguard" data-i18n-attr="title|header.bodyguard_title" title="WHEA Bodyguard"><span class="dot"></span> <span data-i18n="header.bodyguard">Bodyguard</span></span>
+    <button id="open-help" class="secondary" data-i18n-attr="title|header.help" title="Help">?</button>
+    <button id="reset-co" class="danger" data-i18n-attr="title|header.reset_co_title" data-i18n="header.reset_co" title="Reset all CO to 0 (or press Esc)">🔴 RESET CO</button>
   </div>
 </header>
 
 <main>
+  <!-- Recovery host: dynamic full-width banners (panic-revert, smart-tune
+       paused) are inserted here by app.js so they span both columns. -->
+  <div id="recovery-host"></div>
+
   <div id="cpu-info" class="card">Loading CPU…</div>
   <div id="not-supported" class="card hidden"></div>
 
@@ -108,7 +123,7 @@
   <!-- Tune Theater: Smart Auto-Adjust live session progress and narrative -->
   <section id="tune-theater" class="card tune-theater hidden">
     <div class="theater-header">
-      <h2>🎬 Tune Theater</h2>
+      <h2 data-i18n="section.tune_theater">🎬 Tune Theater</h2>
       <div class="theater-meta">
         <span id="theater-mode">—</span> · session <span id="theater-session">—</span>
       </div>
@@ -144,25 +159,25 @@
        buttons so the user reviews before committing. -->
   <section id="tune-results-card" class="card hidden">
     <div class="tune-results-header">
-      <h2>🎯 Tune Results</h2>
+      <h2 data-i18n="section.tune_results">🎯 Tune Results</h2>
       <span id="tune-results-meta" class="muted small">—</span>
     </div>
     <p id="tune-results-summary" class="muted small">—</p>
     <div id="tune-results-table-wrap"></div>
     <div class="actions tune-results-actions">
-      <button id="tune-apply-results" class="primary">▶ Apply recommended values</button>
-      <button id="tune-revert-launch" class="secondary">↺ Revert to launch values</button>
-      <button id="tune-save-profile" class="secondary">💾 Save as profile…</button>
-      <button id="tune-dismiss" class="secondary">Dismiss</button>
+      <button id="tune-apply-results" class="primary" data-i18n="actions.apply_recommended">▶ Apply recommended values</button>
+      <button id="tune-revert-launch" class="secondary" data-i18n="actions.revert_to_launch">↺ Revert to launch values</button>
+      <button id="tune-save-profile" class="secondary" data-i18n="actions.save_profile">💾 Save as profile…</button>
+      <button id="tune-dismiss" class="secondary" data-i18n="actions.dismiss">Dismiss</button>
     </div>
   </section>
 
   <!-- Pro Dashboard: live graphs + stats. Auto-shows during a test; toggle button always available. -->
   <section id="pro-dashboard" class="card pro-dashboard hidden">
     <div class="pro-header">
-      <h2>📊 Pro Dashboard</h2>
+      <h2 data-i18n="section.pro_dashboard">📊 Pro Dashboard</h2>
       <div class="pro-controls">
-        <span class="pro-range-label">Window:</span>
+        <span class="pro-range-label" data-i18n="labels.window">Window:</span>
         <button class="pill" data-range="60">60s</button>
         <button class="pill active" data-range="180">3m</button>
         <button class="pill" data-range="600">10m</button>
@@ -209,7 +224,7 @@
     <div class="core-heatmap" id="core-heatmap"></div>
   </section>
 
-  <button id="pro-toggle" class="secondary pro-toggle">📊 Open Pro Dashboard</button>
+  <button id="pro-toggle" class="secondary pro-toggle" data-i18n="actions.open_pro_dashboard">📊 Open Pro Dashboard</button>
 
   <!-- Safety guard banner (auto-tune): shows live during auto-adjust runs -->
   <div id="safety-banner" class="card safety-banner hidden"></div>
@@ -221,7 +236,7 @@
        values are all zero. Dismissable; reappears if writes keep failing. -->
   <section id="bios-setup-card" class="card bios-setup hidden">
     <div class="bios-header">
-      <h2>⚙ Enable PBO + Curve Optimizer in your BIOS</h2>
+      <h2 data-i18n="section.bios_setup">⚙ Enable PBO + Curve Optimizer in your BIOS</h2>
       <button id="bios-setup-dismiss" class="secondary" title="Hide this card">×</button>
     </div>
     <div id="bios-setup-reason" class="bios-reason"></div>
@@ -246,27 +261,27 @@
   </section>
 
   <section class="card hidden" id="curve-card">
-    <h2>1. Set Curve Optimizer</h2>
+    <h2 data-i18n="section.set_co">1. Set Curve Optimizer</h2>
     <div class="tabs">
-      <button class="tab active" data-mode="all-cores">All cores</button>
-      <button class="tab" data-mode="per-ccd" id="tab-ccd">Per-CCD</button>
-      <button class="tab" data-mode="per-core">Per-core</button>
+      <button class="tab active" data-mode="all-cores" data-i18n="tabs.all_cores">All cores</button>
+      <button class="tab" data-mode="per-ccd" id="tab-ccd" data-i18n="tabs.per_ccd">Per-CCD</button>
+      <button class="tab" data-mode="per-core" data-i18n="tabs.per_core">Per-core</button>
     </div>
     <div id="curve-form"></div>
     <div class="actions">
-      <button id="apply-co" class="primary">Apply</button>
-      <button id="revert-co" class="secondary">Revert to launch</button>
-      <button id="save-profile" class="secondary">Save as profile…</button>
+      <button id="apply-co" class="primary" data-i18n="actions.apply">Apply</button>
+      <button id="revert-co" class="secondary" data-i18n="actions.revert_launch">Revert to launch</button>
+      <button id="save-profile" class="secondary" data-i18n="actions.save_profile">Save as profile…</button>
     </div>
   </section>
 
   <section class="card hidden" id="test-card">
-    <h2>2. Test &amp; Autotune Stability</h2>
+    <h2 data-i18n="section.test_stability">2. Test &amp; Autotune Stability</h2>
 
-    <div class="co-input"><label>Mode:</label>
-      <label class="inline-radio"><input type="radio" name="testMode" value="manual" checked> Manual test</label>
-      <label class="inline-radio"><input type="radio" name="testMode" value="auto"> Auto-Adjust</label>
-      <label class="inline-radio"><input type="radio" name="testMode" value="smart"> Smart Auto-Adjust (Pro)</label>
+    <div class="co-input"><label data-i18n="labels.mode">Mode:</label>
+      <label class="inline-radio"><input type="radio" name="testMode" value="manual" checked> <span data-i18n="modes.manual">Manual test</span></label>
+      <label class="inline-radio"><input type="radio" name="testMode" value="auto"> <span data-i18n="modes.auto">Auto-Adjust</span></label>
+      <label class="inline-radio"><input type="radio" name="testMode" value="smart"> <span data-i18n="modes.smart">Smart Auto-Adjust (Pro)</span></label>
     </div>
 
     <div id="mode-info-manual" class="info-box">
@@ -336,8 +351,8 @@
     </div>
 
     <div class="actions">
-      <button id="start-test" class="primary">▶ Start</button>
-      <button id="stop-test" class="danger hidden">■ Stop</button>
+      <button id="start-test" class="primary" data-i18n="actions.start">▶ Start</button>
+      <button id="stop-test" class="danger hidden" data-i18n="actions.stop">■ Stop</button>
     </div>
   </section>
 
@@ -348,35 +363,35 @@
        useful idle (verify BIOS state) as well as during a tune. -->
   <section class="card" id="live-co-card">
     <div class="live-co-header">
-      <h2>🎯 Live Curve Optimizer <span class="live-co-pulse" title="Reading every 3 seconds">●</span></h2>
-      <span class="muted small">read from SMU · updates every 3 s</span>
+      <h2><span data-i18n="section.live_co">🎯 Live Curve Optimizer</span> <span class="live-co-pulse" title="Reading every 3 seconds">●</span></h2>
+      <span class="muted small" data-i18n="live_co.subtitle">read from SMU · updates every 3 s</span>
     </div>
     <p class="muted small">What the chip is running with <em>right now</em> — useful while Auto-Adjust or Smart Tune is changing things. Not what's in BIOS; SMU values until next reboot.</p>
     <div class="tabs">
-      <button class="live-co-tab active" data-view="summary">Summary</button>
-      <button class="live-co-tab" data-view="per-ccd">Per-CCD</button>
-      <button class="live-co-tab" data-view="per-core">Per-core</button>
+      <button class="live-co-tab active" data-view="summary" data-i18n="tabs.summary">Summary</button>
+      <button class="live-co-tab" data-view="per-ccd" data-i18n="tabs.per_ccd">Per-CCD</button>
+      <button class="live-co-tab" data-view="per-core" data-i18n="tabs.per_core">Per-core</button>
     </div>
-    <div id="live-co-content" class="muted small">Waiting for first read…</div>
+    <div id="live-co-content" class="muted small" data-i18n="live_co.waiting">Waiting for first read…</div>
   </section>
 
   <section class="card hidden" id="status-card">
-    <h2>3. Live Status</h2>
+    <h2 data-i18n="section.live_status">3. Live Status</h2>
     <div id="status-content"></div>
   </section>
 
   <section class="card hidden" id="report-card">
-    <h2>4. Report</h2>
+    <h2 data-i18n="section.report">4. Report</h2>
     <div id="report-content"></div>
   </section>
 
   <section class="card" id="profiles-card">
-    <h2>Profiles</h2>
-    <div id="profiles-list" class="muted">No profiles yet.</div>
+    <h2 data-i18n="section.profiles">Profiles</h2>
+    <div id="profiles-list" class="muted" data-i18n="profiles.empty">No profiles yet.</div>
   </section>
 
   <section class="card" id="safety-card">
-    <h2>🛡 Safety Guards (auto-tune)</h2>
+    <h2 data-i18n="section.safety_guards">🛡 Safety Guards (auto-tune)</h2>
     <p class="muted small">Hard limits that abort Auto-Adjust the instant they're exceeded. Combined with the WHEA Bodyguard, these prevent the kind of silent slide into BSOD that a remote session can leave you blind to.</p>
     <div class="co-input"><label>Max core temperature (°C):</label><input type="number" id="safety-max-temp" min="50" max="105" value="95"><span class="muted small">(7950X3D thermal throttle ~89°C, hard limit 95°C)</span></div>
     <div class="co-input"><label>Max core VID (V):</label><input type="number" id="safety-max-vid" min="0.9" max="1.55" step="0.01" value="1.45"><span class="muted small">(AMD spec ≤1.45V for Zen 4/5 daily)</span></div>
@@ -393,7 +408,7 @@
   </section>
 
   <section class="card" id="settings-card">
-    <h2>⚙ Shutdown behavior</h2>
+    <h2 data-i18n="section.shutdown_behavior">⚙ Shutdown behavior</h2>
     <p class="muted small">Pick what should stop the service. The server's terminal window (Ctrl+C or closing the cmd window) <strong>always</strong> stops it — that's the master switch.</p>
     <label class="setting-row">
       <input type="checkbox" id="opt-tabclose">

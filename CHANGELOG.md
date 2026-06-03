@@ -8,6 +8,66 @@ hit 1.0 yet — see the roadmap in [README.md](README.md#roadmap).
 
 ---
 
+## [0.8.0] — 2026-06-03 · "Full-width two-column layout + 9-language i18n"
+
+Two-piece release that reshapes the UI for wide screens and adds
+internationalization with eight non-English locales out of the box.
+
+### New
+
+- **Two-column full-width layout.** `<main>` is now a CSS Grid with a
+  full-width recovery host on top and two columns underneath:
+  - **Left column** carries the live data — CPU info, telemetry strip
+    and expanded grid, Safety Guard banner, Tune Theater, Tune Results,
+    Pro Dashboard, Live CO, Live Status, Report.
+  - **Right column** carries controls and configuration — CO banner,
+    BIOS setup card, Set CO form, Test config + start/stop, Profiles,
+    Safety Guards, Shutdown behaviour.
+  - **`#recovery-host`** is `.col-fullwidth` so panic-revert and
+    Smart Tune Paused banners span both columns and read prominently.
+  - Max width raised from 1100px to 1800px; collapses to single column
+    under 1080px so smaller laptops stay usable.
+  - Reorganisation happens via a one-shot JS DOM move on
+    `DOMContentLoaded` (`applyTwoColumnLayout()`); source order stays
+    semantic so screen readers + diffs aren't disrupted.
+- **i18n with 9 locales** — `web/locales/{en,fr,es,de,ru,he,ar,zh,ja}.json`.
+  - Lookup strategy: `localStorage.rpo.lang > navigator.language > 'en'`.
+    Falls through current language → English → raw key, so partial
+    translations still render gracefully.
+  - HTML strings carry `data-i18n="ns.key"` (text content),
+    `data-i18n-attr="attrname|ns.key"` (any attribute), or
+    `data-i18n-html="ns.key"` (innerHTML). ~40 of the load-bearing
+    strings — section headers, primary actions, tab labels, common
+    status messages — are marked up and translated in all 9 locales.
+    Verbose paragraphs (risk disclaimer, BIOS setup walkthroughs)
+    stay English in this release and fall back via the chain; a
+    translator can fill them in per-locale over time without code
+    changes.
+  - **Language switcher** in the header (subtle `<select>`); choice
+    persists in `localStorage` and applies immediately without a page
+    reload. Auto-detects the browser language on first visit.
+  - **RTL support** for Hebrew and Arabic — `<html dir="rtl">` is set
+    when the locale is `he` or `ar`. Logical CSS properties
+    (`margin-inline`, `padding-inline`, `border-inline-start/end`)
+    handle most of the mirroring; the recovery card border and
+    profile-details accent get explicit RTL overrides in `style.css`.
+  - Chinese is Simplified (`zh-CN`) — the variant Android ships as
+    default in mainland China.
+
+### Notes
+
+- The 8 non-English locales currently translate the buttons, section
+  titles, tab labels, mode names, common labels, recovery banners, and
+  toast messages — about 50 strings each. Risk disclaimer paragraphs,
+  BIOS setup steps, and tooltips stay English (fallback). A translator
+  drop-in only needs to add keys to the relevant locale JSON file;
+  no code changes required.
+- The layout change is browser-only — no server contract change.
+  Auto-updater will deliver the new HTML / CSS / JS / locale files on
+  next `Launch.bat` to anyone on 0.6.0 or any 0.7.x.
+
+---
+
 ## [0.7.3] — 2026-06-03 · "Smart Tune recovery card · edit & resume"
 
 The pause/resume flow on the recovery card now shows what the previous
