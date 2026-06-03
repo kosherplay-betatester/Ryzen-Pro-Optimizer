@@ -71,6 +71,18 @@ function Send-JsonResponse {
     try {
         $Context.Response.ContentLength64 = $bytes.Length
         $Context.Response.OutputStream.Write($bytes, 0, $bytes.Length)
+    } catch [System.Net.HttpListenerException] {
+        # Client closed the TCP socket before we could finish writing -
+        # browser refresh, tab close, polling-loop cancellation. Nothing
+        # we can do; the response was meant for a connection that no
+        # longer exists. Don't escalate to the outer handler-error path,
+        # which would log it as a scary [ERROR]. Re-throw any other
+        # exception type so real bugs still surface normally.
+    } catch [System.IO.IOException] {
+        # Underlying socket abort during write. Same root cause as above
+        # (client gone); .NET sometimes wraps the HttpListenerException
+        # in an IOException depending on which layer hits the broken
+        # pipe first.
     } finally {
         try { $Context.Response.OutputStream.Close() } catch {}
     }
@@ -196,7 +208,22 @@ function Invoke-ServerLoop {
             $typeName = $ex.GetType().FullName
             $inner = if ($ex.InnerException) { " :: inner=$($ex.InnerException.GetType().FullName): $($ex.InnerException.Message)" } else { '' }
             $stack = ($_.ScriptStackTrace -split "`n" | Select-Object -First 6) -join ' | '
-            Write-Log ERROR "Handler error on $method $rawUrl :: [$typeName] $($ex.Message)$inner :: $stack"
+            # Client-disconnect noise: "The specified network name is no
+            # longer available" / "An existing connection was forcibly
+            # closed" / "An established connection was aborted" all mean
+            # the client gave up mid-request (refresh, tab close, polling
+            # cancellation). Log at INFO level so it stays visible for
+            # diagnostics but doesn't read as a real handler bug.
+            $isClientGone = (
+                $typeName -eq 'System.Net.HttpListenerException' -or
+                ($ex.InnerException -and $ex.InnerException -is [System.Net.HttpListenerException]) -or
+                $ex.Message -match 'network name is no longer available|forcibly closed|connection was aborted'
+            )
+            if ($isClientGone) {
+                Write-Log INFO "Client disconnected mid-request on $method $rawUrl (harmless)"
+            } else {
+                Write-Log ERROR "Handler error on $method $rawUrl :: [$typeName] $($ex.Message)$inner :: $stack"
+            }
             try { Send-JsonResponse -Context $context -Status 500 -Data @{ ok=$false; error=$ex.Message } } catch {}
         }
 
