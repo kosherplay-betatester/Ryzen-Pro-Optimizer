@@ -8,6 +8,47 @@ hit 1.0 yet — see the roadmap in [README.md](README.md#roadmap).
 
 ---
 
+## [0.7.3] — 2026-06-03 · "Smart Tune recovery card · edit & resume"
+
+The pause/resume flow on the recovery card now shows what the previous
+session actually found, and gives the user an explicit way to tweak the
+per-core starting CO before continuing.
+
+### New
+
+- **Last known-good per-core values** are now rendered as a per-CCD pill
+  row inside the recovery card. Resolution rule:
+  `LOCKED scope.locked > scope.scopeState.knownStable (deepest stable
+  probe) > launch fallback`, with per-core scopes taking precedence over
+  their parent CCD scope where both have data. Matches the per-core
+  resolution server-side (`Get-RecommendedCoFromTune`) so the table the
+  user sees here is the same values that would be written if they
+  picked plain Resume.
+- **Edit & resume** button on the recovery card flips the values grid
+  into per-core number inputs pre-filled with the last-good values.
+  Range-clamped to `[-30, +30]`. Two new action buttons appear:
+  - **Apply edits & resume** — `POST /api/smart-tune/resume` now accepts
+    an optional `values: int[]` payload; if present and valid (length =
+    cpu cores, each in range), the server writes the user-edited array
+    to the SMU (with the standard panic-revert breadcrumb) before
+    handing off to `Resume-SmartTune`. The bisection then continues
+    from the user's chosen starting point.
+  - **Cancel edits** — restores the read-only pill view, original
+    Resume / Edit / Discard action row.
+- Recovery card meta now also surfaces **"Scopes locked: M / N"** so the
+  user can see at a glance how far the session got before it was
+  interrupted.
+
+### Fixed
+
+- The pending-session info that previously only showed `Mode` and
+  `Status when stopped` left the user with no concrete read on *what
+  CO values* the resume would actually start from — a real concern
+  after an hours-long tune that gets paused. Now both the values **and**
+  the option to change them are surfaced explicitly.
+
+---
+
 ## [0.7.2] — 2026-06-03 · "Telemetry handler hardening"
 
 Defensive fix only — no behaviour or UI changes.

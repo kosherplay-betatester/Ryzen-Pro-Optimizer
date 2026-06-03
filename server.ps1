@@ -30,7 +30,7 @@ $ErrorActionPreference = 'Stop'
 
 # App version. Bumped manually per release; surfaced via /api/version
 # and shown in the UI footer. Keep in sync with CHANGELOG.md.
-$script:AppVersion = '0.7.2'
+$script:AppVersion = '0.7.3'
 
 # Project root
 $RepoRoot = $PSScriptRoot
@@ -692,11 +692,35 @@ Register-Route -Method POST -Path '/api/smart-tune/apply-results' -Handler {
 }
 
 Register-Route -Method POST -Path '/api/smart-tune/resume' -Handler {
+    param($ctx, $params)
     if (-not $runnerReady) { return @{ ok = $false; error = 'CoreCycler not installed' } }
     if (-not $coReady)     { return @{ ok = $false; error = 'CO tool not initialized' } }
     $cur = (Get-CurrentState).state
     if ($cur -ne 'IDLE' -and $cur -ne 'REPORTING') {
         return @{ ok = $false; error = "Cannot resume - state=$cur" }
+    }
+    # Optional `values` payload - the recovery card's "Edit & resume"
+    # flow lets the user manually override the per-core starting CO
+    # before the bisection picks up. Validation: must be an array of
+    # ints, length == cpu.Cores, each within [-30, 30] (the SMU's
+    # physical CO range). On any validation failure we fall through to
+    # plain resume - safer than refusing and leaving the user staring
+    # at a stuck recovery card.
+    try {
+        $body = Read-JsonBody -Context $ctx
+        if ($body -and $body.PSObject.Properties['values'] -and $null -ne $body.values) {
+            $vals = @($body.values | ForEach-Object { [int]$_ })
+            if ($vals.Count -eq $cpu.Cores -and -not ($vals | Where-Object { $_ -lt -30 -or $_ -gt 30 })) {
+                Save-PanicRevertState -Values $vals -Reason 'Smart Tune resume - user-edited seed values'
+                Set-AllCoreCo -Values $vals
+                Clear-PanicRevertState
+                Write-Log INFO "Smart Tune resume seeded with user-edited values: $($vals -join ',')"
+            } else {
+                Write-Log WARN "Smart Tune resume: rejected values payload (count=$($vals.Count) or out-of-range); proceeding with last session values"
+            }
+        }
+    } catch {
+        Write-Log WARN "Smart Tune resume: values payload unreadable, ignoring: $($_.Exception.Message)"
     }
     $ok = Resume-SmartTune -SessionPath $script:SmartTuneSessionPath -HistoryPath $script:SmartTuneHistoryPath -Cpu $cpu
     if (-not $ok) { return @{ ok = $false; error = 'No session to resume (or unreadable)' } }

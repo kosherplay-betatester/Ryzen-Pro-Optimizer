@@ -1636,30 +1636,97 @@ async function checkPanicRevert() {
   } catch (_) {}
 }
 
+// Resolve the "last good tested" CO for each core from a paused
+// session's scopes. Same resolution rule as recommendedCoFor but
+// extended for PROBING scopes - we fall back to scopeState.knownStable
+// (the deepest value that actually passed) since the scope didn't get
+// to a final lock before the session was interrupted.
+function lastGoodCoFromSession(session) {
+  const cores = cpuInfo ? cpuInfo.Cores : 16;
+  const out = new Array(cores).fill(0);
+  if (!session || !Array.isArray(session.scopes)) return out;
+  // CCD scopes first (less specific), then per-core (more specific)
+  // - same overwrite ordering Get-RecommendedCoFromTune uses server-side.
+  const order = [...session.scopes].sort((a, b) => {
+    const aPerCore = /^core\d+$/.test(a.id || '') ? 1 : 0;
+    const bPerCore = /^core\d+$/.test(b.id || '') ? 1 : 0;
+    return aPerCore - bPerCore;
+  });
+  for (const sc of order) {
+    if (!Array.isArray(sc.cores)) continue;
+    let val = null;
+    if (sc.status === 'LOCKED' && sc.locked != null) val = sc.locked;
+    else if (sc.scopeState && sc.scopeState.knownStable != null) val = sc.scopeState.knownStable;
+    if (val == null) continue;
+    for (const c of sc.cores) {
+      if (c >= 0 && c < cores) out[c] = val;
+    }
+  }
+  return out;
+}
+
+// Group an array of per-core CO into per-CCD chunks so the recovery
+// card can display the values in the same layout as the rest of the UI.
+function renderLastGoodValuesGrid(values, editable) {
+  if (!cpuInfo || !Array.isArray(values)) return '';
+  const ccdsCount = cpuInfo.CcdCount || 1;
+  const cpc = cpuInfo.CoresPerCcd || values.length;
+  const fmt = v => (v > 0 ? '+' : '') + v;
+  const cls = v => v < 0 ? 'neg' : v > 0 ? 'pos' : 'zero';
+  let html = '';
+  for (let c = 0; c < ccdsCount; c++) {
+    const start = c * cpc;
+    const label = cpuInfo.VCacheCcdIndex === c ? `CCD${c} (V-Cache 🔋)` : `CCD${c}`;
+    let cells = '';
+    for (let i = start; i < start + cpc && i < values.length; i++) {
+      if (editable) {
+        cells += `<span class="recovery-edit-cell"><label class="muted small">C${i}</label>
+          <input type="number" class="recovery-edit-input" data-core="${i}" value="${values[i]}" min="-30" max="30" step="1"></span>`;
+      } else {
+        cells += `<span class="co-pill ${cls(values[i])}" title="Core ${i}">C${i}: ${fmt(values[i])}</span>`;
+      }
+    }
+    html += `<div class="recovery-values-row"><span class="recovery-values-label">${label}</span><div class="recovery-values-cells">${cells}</div></div>`;
+  }
+  return html;
+}
+
 async function checkPendingSmartSession() {
   try {
     const r = await fetchJson('/api/smart-tune/pending-session');
     if (!r.ok || !r.data) return;
     const p = r.data;
+    const lastGood = lastGoodCoFromSession(p);
     const html = `
       <div class="recovery-header">
         <span class="recovery-icon">⏸</span>
         <div class="recovery-title">
           <h2>Smart Tune was paused</h2>
-          <div class="recovery-sub">A previous session was interrupted before it finished. Continue where it left off, or start fresh.</div>
+          <div class="recovery-sub">A previous session was interrupted before it finished. Continue where it left off (optionally editing the starting per-core CO), or start fresh.</div>
         </div>
       </div>
       <div class="recovery-details">
         <div><span class="muted small">Mode</span><strong>${escHtml(p.mode || '?')}</strong></div>
         <div><span class="muted small">Status when stopped</span><strong>${escHtml(p.status || '?')}</strong></div>
+        <div><span class="muted small">Scopes locked</span><strong>${(p.scopes || []).filter(s => s.status === 'LOCKED').length} / ${(p.scopes || []).length}</strong></div>
+      </div>
+      <div class="recovery-values">
+        <div class="recovery-values-title">Last known-good per-core values <span class="muted small">(resolved from locked scopes · falls back to deepest stable probe · then launch)</span></div>
+        <div id="recovery-values-grid">${renderLastGoodValuesGrid(lastGood, false)}</div>
       </div>
       <div class="actions">
-        <button class="primary big" id="smart-resume">▶ Resume from last position</button>
+        <button class="primary big" id="smart-resume" title="Continue from the values shown above">▶ Resume from last position</button>
+        <button class="secondary" id="smart-edit" title="Tweak per-core CO before resuming">✎ Edit &amp; resume…</button>
         <button class="secondary" id="smart-discard">✕ Discard session</button>
+      </div>
+      <div id="recovery-edit-actions" class="actions hidden">
+        <button class="primary big" id="smart-resume-edits">▶ Apply edits &amp; resume</button>
+        <button class="secondary" id="smart-edit-cancel">Cancel edits</button>
       </div>`;
     const banner = document.createElement('div');
     banner.className = 'card recovery-card';
     banner.id = 'smart-pending-card';
+    banner.dataset.lastGood = JSON.stringify(lastGood);
     banner.innerHTML = html;
     document.querySelector('main').insertBefore(banner, document.querySelector('main').firstChild);
     // Surface a header badge so the user notices recovery options even
@@ -1707,6 +1774,49 @@ document.addEventListener('click', async e => {
       document.getElementById('smart-pending-card')?.remove();
       document.getElementById('recovery-badge')?.remove();
       SmartTune.show();
+    } else {
+      showToast('Resume failed: ' + r.error, 'error');
+    }
+  }
+  // Flip the values grid from read-only pills to editable per-core
+  // inputs, swap the action row. Pre-fills inputs with the last-good
+  // values; user can adjust any of them within [-30, +30].
+  if (e.target.id === 'smart-edit' || e.target.closest?.('#smart-edit')) {
+    const card = document.getElementById('smart-pending-card');
+    if (!card) return;
+    const lastGood = JSON.parse(card.dataset.lastGood || '[]');
+    document.getElementById('recovery-values-grid').innerHTML = renderLastGoodValuesGrid(lastGood, true);
+    // Hide the default action row, show the edit action row.
+    e.target.closest('.actions')?.classList.add('hidden');
+    document.getElementById('recovery-edit-actions')?.classList.remove('hidden');
+  }
+  if (e.target.id === 'smart-edit-cancel' || e.target.closest?.('#smart-edit-cancel')) {
+    const card = document.getElementById('smart-pending-card');
+    if (!card) return;
+    const lastGood = JSON.parse(card.dataset.lastGood || '[]');
+    document.getElementById('recovery-values-grid').innerHTML = renderLastGoodValuesGrid(lastGood, false);
+    document.getElementById('recovery-edit-actions')?.classList.add('hidden');
+    card.querySelector('.actions')?.classList.remove('hidden');
+  }
+  if (e.target.id === 'smart-resume-edits' || e.target.closest?.('#smart-resume-edits')) {
+    const inputs = document.querySelectorAll('#recovery-values-grid .recovery-edit-input');
+    const values = new Array(cpuInfo?.Cores || inputs.length).fill(0);
+    inputs.forEach(inp => {
+      const idx = parseInt(inp.dataset.core, 10);
+      const v   = parseInt(inp.value, 10);
+      if (Number.isFinite(idx) && Number.isFinite(v)) values[idx] = Math.max(-30, Math.min(30, v));
+    });
+    const r = await fetchJson('/api/smart-tune/resume', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ values })
+    });
+    if (r.ok) {
+      showToast(`Resumed with edited values (${values.length} cores written)`);
+      document.getElementById('smart-pending-card')?.remove();
+      document.getElementById('recovery-badge')?.remove();
+      SmartTune.show();
+      await loadCoValues();
     } else {
       showToast('Resume failed: ' + r.error, 'error');
     }

@@ -238,6 +238,19 @@ h3 { font-size: 0.9rem; margin: 1rem 0 0.4rem; color: var(--text); }
 }
 .recovery-card .actions button.big { padding: 0.6rem 1.2rem; font-size: 1rem; }
 
+/* Last known-good per-core values panel in the recovery card. Pill
+   row per CCD when read-only; number-input row per CCD when editing. */
+.recovery-values { margin: 0.6rem 0 0.8rem; padding: 0.6rem 0.8rem; background: rgba(255,255,255,0.025); border: 1px solid var(--border); border-radius: 6px; }
+.recovery-values-title { color: var(--muted); font-size: 0.85rem; margin-bottom: 0.4rem; }
+.recovery-values-title .small { display: inline; margin-left: 0.4rem; }
+.recovery-values-row { display: flex; align-items: center; gap: 0.6rem; margin: 0.3rem 0; flex-wrap: wrap; }
+.recovery-values-label { min-width: 140px; color: var(--muted); font-size: 0.85rem; }
+.recovery-values-cells { display: flex; flex-wrap: wrap; gap: 0.25rem; flex: 1; }
+.recovery-edit-cell { display: inline-flex; align-items: center; gap: 0.3rem; }
+.recovery-edit-cell label { color: var(--muted); font-size: 0.75rem; }
+.recovery-edit-input { width: 4rem; background: var(--bg); color: var(--text); border: 1px solid var(--border); padding: 0.2rem 0.4rem; border-radius: 4px; font-family: ui-monospace, Consolas, monospace; font-size: 0.8rem; text-align: center; }
+.recovery-edit-input:focus { outline: none; border-color: var(--primary); }
+
 /* Header badge - sits next to the bodyguard indicator so the recovery
    prompt is visible even when scrolled away from the top */
 .recovery-badge {
