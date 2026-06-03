@@ -429,27 +429,25 @@ Register-Route -Method POST -Path '/api/test/start' -Handler {
         if ($body.PSObject.Properties['autoMax']) { $autoMax = [int]$body.autoMax }
         if ($body.PSObject.Properties['autoInc']) { $autoInc = [int]$body.autoInc }
         if ($coReady) {
-            # Snapshot whatever the user had set BEFORE we reset, so they
-            # can roll back to it via the auto-saved profile.
-            $preTune = Get-AllCoreCo -CoreCount $cpu.Cores
+            $autoStart = Get-AllCoreCo -CoreCount $cpu.Cores
+            # Snapshot the current CO as a regular profile so the user
+            # can roll back if Auto-Adjust converges somewhere worse than
+            # the starting point. Best-effort: never block the test on a
+            # snapshot failure.
             try {
-                Save-PreTuneSnapshot -Process 'auto-adjust' -CurrentValues $preTune `
+                Save-PreTuneSnapshot -Process 'auto-adjust' -CurrentValues $autoStart `
                     -CpuModel $cpu.Name -CcdCount $cpu.CcdCount | Out-Null
             } catch { Write-Log WARN "Pre-Auto-Adjust snapshot failed: $($_.Exception.Message)" }
-            # Reset SMU to launch (BIOS) values before Auto-Adjust kicks in,
-            # so the tune always starts from a known-safe baseline regardless
-            # of what the user had manually set during this session. The
-            # auto-saved profile above lets them get their tuned-state back
-            # later if they want it.
-            if ($null -ne $launchSnapshot) {
-                try {
-                    Set-AllCoreCo -Values $launchSnapshot
-                    Write-Log INFO "Auto-Adjust: SMU reset to launch (BIOS) values before starting test"
-                } catch {
-                    Write-Log WARN "Pre-Auto-Adjust BIOS reset failed (continuing): $($_.Exception.Message)"
-                }
-            }
-            $autoStart = Get-AllCoreCo -CoreCount $cpu.Cores
+            # NB: previously this block also wrote $launchSnapshot to the
+            # SMU as a "start from BIOS baseline" feature. Reverted - the
+            # launch snapshot is whatever the SMU happened to be at when
+            # the server process started, NOT necessarily BIOS values.
+            # If a previous tune ended at 0 and the server was then
+            # restarted (auto-updater, manual restart), the launch
+            # snapshot becomes 0, and the auto-reset would silently
+            # overwrite a user's actual BIOS-applied undervolt with that
+            # stale value. Users who explicitly want to reset to launch
+            # values can use the header's "BIOS values" button.
         }
     }
 
@@ -624,18 +622,16 @@ Register-Route -Method POST -Path '/api/smart-tune/start' -Handler {
             Save-PreTuneSnapshot -Process 'smart-tune' -CurrentValues $currentCo `
                 -CpuModel $cpu.Name -CcdCount $cpu.CcdCount | Out-Null
         } catch { Write-Log WARN "Pre-Smart-Tune snapshot failed: $($_.Exception.Message)" }
-        # Reset SMU to launch (BIOS) values before the bisection picks up,
-        # so probes always start from a known-safe baseline regardless of
-        # whatever the user had manually set. The auto-saved profile above
-        # carries their pre-tune state if they want to return to it later.
-        if ($coReady -and $null -ne $launchSnapshot) {
-            try {
-                Set-AllCoreCo -Values $launchSnapshot
-                Write-Log INFO "Smart Tune: SMU reset to launch (BIOS) values before bisection"
-            } catch {
-                Write-Log WARN "Pre-Smart-Tune BIOS reset failed (continuing): $($_.Exception.Message)"
-            }
-        }
+        # NB: previously this block wrote $launchSnapshot to the SMU
+        # as a "reset to BIOS baseline before probing" step. Reverted -
+        # the launch snapshot is whatever was on the SMU at server
+        # startup, NOT necessarily BIOS values. A previous tune ending
+        # at 0 followed by a server restart would have made
+        # $launchSnapshot equal to 0, and this block would have silently
+        # overwritten the user's actual BIOS-applied CO with that stale
+        # value. The "BIOS values" header button is the explicit-user-
+        # choice path for that operation; Smart Tune now picks up from
+        # whatever the user has on the SMU when they hit Start.
 
         Start-SmartTune -Cpu $cpu -Mode $mode -Direction $direction `
             -SessionPath $script:SmartTuneSessionPath -HistoryPath $script:SmartTuneHistoryPath `
