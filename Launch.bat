@@ -34,6 +34,11 @@ if %errorlevel% neq 0 (
     exit /b
 )
 
+REM Check for a newer version on GitHub before booting (rate-limited to
+REM every 6h on normal launches; Update.bat bypasses for manual checks).
+REM Refuses to apply if another instance is running or a tune is mid-flight.
+powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0update.ps1"
+
 REM Run installer if corecycler is missing OR vendor DLL is missing/incompatible OR PawnIO not registered
 set RUN_INSTALLER=0
 if not exist "%~dp0corecycler\script-corecycler.ps1" set RUN_INSTALLER=1

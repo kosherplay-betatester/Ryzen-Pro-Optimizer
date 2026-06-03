@@ -8,6 +8,77 @@ hit 1.0 yet — see the roadmap in [README.md](README.md#roadmap).
 
 ---
 
+## [0.7.0] — 2026-06-03 · "Auto-updater + per-core visibility"
+
+Two themes: full per-core visibility during both stress tests and Smart
+Tune, and a built-in auto-updater so users on `0.6.0` will be prompted
+to install this release the next time they run `Launch.bat`.
+
+### New
+
+- **Auto-updater.** `Launch.bat` now probes
+  `raw.githubusercontent.com/.../server.ps1` on every boot (rate-limited
+  to once every 6 h), parses `$script:AppVersion`, and if a newer
+  release is on `main` shows a coloured `Y/N/S` prompt that defaults to
+  Yes. On Yes: downloads `main.zip`, snapshots non-preserved top-level
+  files into `installer-cache/backups/{old-version}-{timestamp}/` for
+  one-shot rollback, then overlays the extracted tree — leaving
+  `runtime/` (state + history + logs), `profiles/` (user profiles),
+  `corecycler/`, `vendor/`, and `installer-cache/` untouched. Refuses
+  to apply if another instance is listening on `127.0.0.1:8765` or if a
+  panic-revert / RUNNING tune session is on disk. A separate
+  `Update.bat` triggers a manual force-check that bypasses both the
+  rate-limit and any "skip this version" marker.
+- **Per-core test progress grid.** New `Parse-LiveCoreStats` in
+  `lib/corecycler-runner.ps1` walks the CoreCycler log forward,
+  attributing iterations / per-core errors / WHEA-delta to whichever
+  core was active at the time of the event. Surfaced via
+  `s.live.perCore` and rendered as a pill grid under the existing Live
+  Status line — one pill per probed core, color-coded by status (green
+  passed / blue testing / amber failed) with inline `N err` / `N WHEA`
+  tags. Persists between status polls so you can see the full picture
+  of which cores already cleared their iterations and which are still
+  in flight.
+- **Smart Tune progress overlay on Live CO per-core pills.** Each
+  per-core pill in the Live CO panel now shows the live SMU value
+  *plus* a badge derived from `s.smartTune.scopes` — 🔒 for locked
+  (green border), ▶ for currently probing (blue, pulsing), dashed
+  border + dimmed for pending, ❌ for failed. Resolution prefers the
+  per-core scope when it has state, falls back to the parent CCD
+  scope otherwise — so during phase A (CCD bisection) all eight cores
+  of CCD0 share its status; during phase B (per-core refinement) each
+  core gets its own. Adds a small legend strip while a tune is RUNNING.
+- **Live CO panel always visible.** Removed the `hidden` class and the
+  `state === TESTING` gate. The SMU snapshot is useful idle (to verify
+  the BIOS-applied CO matches your saved profile) as well as during a
+  tune. `pollCurrentCo` already self-gates on `SupportsCurveOptimizer`
+  so non-Ryzen / pre-Zen3 systems stay no-op.
+- **Auto-switch Live CO to Per-core view on Smart Tune start.** Saves a
+  click; respects any later manual switch (the auto-switch is one-shot
+  per tune session and resets when the tune ends).
+
+### Fixed
+
+- **`Inspect-SafetySnapshot` 500-ing /api/status every tick** — second
+  pass on the same endpoint hardened in 0.6.0. Two distinct bugs:
+  - `@($violations)` against a `Generic.List[object]` raises
+    `[System.ArgumentException] "Argument types do not match"` under
+    PowerShell 7.5+. This was the runtime cause; `$violations.ToArray()`
+    flattens to `Object[]` cleanly. Documented inline with the existing
+    `[Math]::Max` antipattern, since both stem from PSObject-wrapping
+    of hashtable values under StrictMode Latest.
+  - The defensive catch shipped in 0.6.0 (commit `18d43f9`) had its own
+    PowerShell parser bug — `Select-Object -First 3 -join ' | '`
+    parsed `-join` as a non-existent parameter on `Select-Object`. So
+    when the inner try threw, the catch's diagnostic log raised
+    `ParameterBindingException` and propagated up to `Invoke-ServerLoop`,
+    producing the very 500 the guard was meant to suppress. Fixed with
+    explicit parens around the pipeline, plus an inner `try {} catch {}`
+    around `Write-Log` so a future formatting mistake here can't
+    re-introduce the same class of bug.
+
+---
+
 ## [0.6.0] — 2026-06-02 · "Audit-hardened"
 
 A long iteration day driven by a real-hardware smoke test on a 7950X3D,
