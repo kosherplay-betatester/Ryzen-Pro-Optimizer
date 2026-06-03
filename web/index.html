@@ -316,10 +316,11 @@
   </section>
 
   <!-- Live Curve Optimizer panel: shows the SMU's actual per-core CO
-       values during a tune, refreshed every 3 polls. Three view tabs:
-       Summary (all-cores / per-CCD synopsis), Per-CCD (one row per CCD),
-       Per-core (pill chips). Visible only while state === TESTING. -->
-  <section class="card hidden" id="live-co-card">
+       values, refreshed every 3 polls. Three view tabs: Summary
+       (all-cores / per-CCD synopsis), Per-CCD (one row per CCD),
+       Per-core (pill chips). Always visible - the SMU snapshot is
+       useful idle (verify BIOS state) as well as during a tune. -->
+  <section class="card" id="live-co-card">
     <div class="live-co-header">
       <h2>🎯 Live Curve Optimizer <span class="live-co-pulse" title="Reading every 3 seconds">●</span></h2>
       <span class="muted small">read from SMU · updates every 3 s</span>

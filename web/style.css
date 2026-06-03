@@ -142,6 +142,31 @@ h3 { font-size: 0.9rem; margin: 1rem 0 0.4rem; color: var(--text); }
 .co-pill.neg { color: var(--accent); }
 .co-pill.pos { color: var(--warning); }
 
+/* Tune-status overlay on Live CO per-core pills. Adds a border tint +
+   subtle background so the user can see which cores Auto-Adjust has
+   already locked, which is being probed right now, and which haven't
+   been touched yet - while still keeping the live SMU value visible. */
+.co-pill.tune-locked  { border: 1px solid rgba(16,185,129,0.45); background: rgba(16,185,129,0.08); }
+.co-pill.tune-probing { border: 1px solid rgba(59,130,246,0.55); background: rgba(59,130,246,0.10); animation: tune-pulse 1.6s infinite; }
+.co-pill.tune-failed  { border: 1px solid rgba(245,158,11,0.55); background: rgba(245,158,11,0.10); }
+.co-pill.tune-pending { border: 1px dashed rgba(139,149,168,0.35); opacity: 0.7; }
+@keyframes tune-pulse { 0%,100% { box-shadow: 0 0 0 0 rgba(59,130,246,0.45); } 50% { box-shadow: 0 0 0 3px rgba(59,130,246,0.0); } }
+.tune-legend { font-size: 0.75rem; color: var(--muted); margin-bottom: 0.4rem; }
+.tune-legend .tune-locked  { color: var(--success); }
+.tune-legend .tune-probing { color: var(--primary); }
+.tune-legend .tune-pending { color: var(--muted); }
+
+/* Per-core test progress grid - shown beneath the Live Status line
+   while a test is in flight. Pill per core with status color, iter
+   counts, and any error/WHEA tags. */
+.pc-grid-label { color: var(--muted); font-size: 0.8rem; margin-top: 0.5rem; }
+.pc-grid { display: flex; flex-wrap: wrap; gap: 0.3rem; margin-top: 0.3rem; }
+.pc-pill { padding: 0.2rem 0.55rem; border-radius: 4px; font-family: ui-monospace, Consolas, monospace; font-size: 0.78rem; border: 1px solid var(--border); background: rgba(255,255,255,0.04); }
+.pc-pill.pc-testing { color: var(--primary); border-color: rgba(59,130,246,0.45); background: rgba(59,130,246,0.08); }
+.pc-pill.pc-passed  { color: var(--success); border-color: rgba(16,185,129,0.35); }
+.pc-pill.pc-failed  { color: var(--warning); border-color: rgba(245,158,11,0.5); background: rgba(245,158,11,0.06); }
+.pc-bad { color: var(--warning); font-weight: 600; }
+
 /* Live CO card - shows the SMU's actual per-core values during a tune.
    Visible only while testing; updated every 3s via pollCurrentCo. */
 .live-co-header { display: flex; justify-content: space-between; align-items: center; gap: 1rem; flex-wrap: wrap; }

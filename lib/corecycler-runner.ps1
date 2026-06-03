@@ -235,11 +235,84 @@ function Parse-LiveStatus {
     $info
 }
 
+function Parse-LiveCoreStats {
+    # Per-core breakdown from a CoreCycler log tail. Walks lines in order,
+    # using "Set to Core N" as a divider to attribute iterations/errors to
+    # the core that was active when the event fired. WHEA totals come from
+    # CoreCycler's running aggregate ("cores with a WHEA error so far: N"),
+    # delta-attributed to whichever core was current when the count moved.
+    # Returns an array of @{ core; iterations; iterationsTotal; errors;
+    # whea; status } ordered by first-tested. Empty array on empty input.
+    # NB: keyed by [int] but stored in @{} (not [ordered]@{}) - the
+    # OrderedDictionary indexer treats int as a positional index, which
+    # blows up on first access. Order is tracked separately.
+    param([object]$LogLines = $null)
+    if ($null -eq $LogLines -or $LogLines -eq '') { return @() }
+    $lines = @($LogLines)
+    $perCore = @{}
+    $order = New-Object System.Collections.Generic.List[int]
+    $curCore = $null
+    $wheaTotal = 0
+    $sawComplete = $false
+
+    foreach ($line in $lines) {
+        if ($line -match 'Set to Core (\d+)') {
+            $curCore = [int]$Matches[1]
+            if (-not $perCore.ContainsKey($curCore)) {
+                $perCore[$curCore] = @{
+                    core            = $curCore
+                    iterations      = 0
+                    iterationsTotal = 0
+                    errors          = 0
+                    whea            = 0
+                    status          = 'testing'
+                }
+                $order.Add($curCore)
+            }
+        }
+        elseif ($null -ne $curCore -and $line -match 'Iteration (\d+)/(\d+)') {
+            $iter = [int]$Matches[1]; $tot = [int]$Matches[2]
+            $entry = $perCore[$curCore]
+            if ($iter -gt $entry.iterations) { $entry.iterations = $iter }
+            $entry.iterationsTotal = $tot
+        }
+        elseif ($null -ne $curCore -and ($line -match 'core_error\b' -or $line -match 'has thrown an error\b' -or $line -match '\bcore \d+ (has )?errored\b')) {
+            $perCore[$curCore].errors++
+        }
+        elseif ($line -match 'cores with a WHEA error so far:\s*(\d+)') {
+            $n = [int]$Matches[1]
+            if ($n -gt $wheaTotal -and $null -ne $curCore) {
+                $perCore[$curCore].whea += ($n - $wheaTotal)
+            }
+            $wheaTotal = $n
+        }
+        elseif ($line -match 'Test completed in') { $sawComplete = $true }
+    }
+
+    if ($order.Count -eq 0) { return @() }
+
+    # Status: cores other than the most recently activated are settled
+    # ("passed" if clean, "failed" if any error/WHEA). The most recent is
+    # still "testing" unless we hit a global "Test completed in" marker.
+    $lastKey = $order[$order.Count - 1]
+    foreach ($k in $order) {
+        $c = $perCore[$k]
+        if ($k -ne $lastKey -or $sawComplete) {
+            $c.status = if ($c.errors -gt 0 -or $c.whea -gt 0) { 'failed' } else { 'passed' }
+        }
+    }
+    $result = New-Object System.Collections.Generic.List[object]
+    foreach ($k in $order) { $result.Add($perCore[$k]) }
+    $result.ToArray()
+}
+
 function Get-LiveStatus {
     if (-not $script:LastLogPath -or -not (Test-Path $script:LastLogPath)) { return $null }
     try {
         $tail = Get-Content -Path $script:LastLogPath -Tail 500 -ErrorAction SilentlyContinue
-        Parse-LiveStatus -LogLines $tail
+        $info = Parse-LiveStatus -LogLines $tail
+        $info.perCore = Parse-LiveCoreStats -LogLines $tail
+        $info
     } catch {
         $null
     }

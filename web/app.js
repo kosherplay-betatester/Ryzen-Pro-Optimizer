@@ -152,6 +152,32 @@ async function pollCurrentCo() {
 }
 
 let liveCoView = 'summary';
+let latestSmartTune = null;        // last s.smartTune seen by pollStatus
+let autoSwitchedForTune = false;   // one-shot: auto-switch to per-core on tune start
+
+// Resolve the Smart Tune scope that "owns" a given core. Prefers per-core
+// scope when it has state (PROBING / LOCKED / FAILED); otherwise falls
+// back to the parent CCD scope. Returns null if no tune is active.
+function coreScopeFor(coreIdx) {
+  if (!latestSmartTune || !Array.isArray(latestSmartTune.scopes)) return null;
+  const scopes = latestSmartTune.scopes;
+  const perCore = scopes.find(s => s.id === `core${coreIdx}`);
+  if (perCore && perCore.status !== 'PENDING') return perCore;
+  const ccd = scopes.find(s => Array.isArray(s.cores) && s.cores.includes(coreIdx) && /^CCD\d+$/.test(s.id || ''));
+  return ccd || perCore || null;
+}
+
+// Map a scope to a (cssClass, badge, title-fragment) triple for pill overlay.
+// `currentScopeId` is the scope currently being probed (RUNNING + currentIdx).
+function tuneStatusFor(scope, currentScopeId) {
+  if (!scope) return { cls: '', badge: '', tip: '' };
+  if (scope.status === 'LOCKED')  return { cls: 'tune-locked',  badge: ' 🔒', tip: ' · locked' };
+  if (scope.status === 'FAILED')  return { cls: 'tune-failed',  badge: ' ❌', tip: ' · failed' };
+  if (scope.id === currentScopeId) return { cls: 'tune-probing', badge: ' ▶',  tip: ' · probing now' };
+  if (scope.status === 'PROBING') return { cls: 'tune-probing', badge: ' ▶',  tip: ' · probing' };
+  return { cls: 'tune-pending', badge: '', tip: ' · pending' };
+}
+
 function renderLiveCo() {
   const el = document.getElementById('live-co-content');
   if (!el) return;
@@ -159,6 +185,10 @@ function renderLiveCo() {
 
   const pillClass = v => v < 0 ? 'neg' : v > 0 ? 'pos' : 'zero';
   const fmt = v => (v > 0 ? '+' : '') + v;
+  const tuning = latestSmartTune && latestSmartTune.status === 'RUNNING';
+  const currentScopeId = tuning && Array.isArray(latestSmartTune.scopes)
+    ? (latestSmartTune.scopes[latestSmartTune.currentIdx] || {}).id
+    : null;
 
   if (liveCoView === 'summary') {
     el.innerHTML = `<div class="live-co-summary"><strong>${escHtml(summarizeCo(currentValues))}</strong></div>`;
@@ -179,7 +209,9 @@ function renderLiveCo() {
     el.innerHTML = html;
     return;
   }
-  // per-core view: pills grouped by CCD
+  // per-core view: pills grouped by CCD. During a Smart Tune, overlay
+  // scope status (locked/probing/pending) onto each pill so the user can
+  // see the auto-adjust progress without leaving this card.
   const ccds = {};
   currentValues.forEach((v, i) => {
     const ccd = cpuInfo.IsDualCcd ? Math.floor(i / cpuInfo.CoresPerCcd) : 0;
@@ -188,10 +220,39 @@ function renderLiveCo() {
   let html = '';
   Object.keys(ccds).sort((a, b) => +a - +b).forEach(ccd => {
     const label = cpuInfo.VCacheCcdIndex === +ccd ? `CCD${ccd} (V-Cache 🔋)` : `CCD${ccd}`;
-    const pills = ccds[ccd].map(c => `<span class="co-pill ${pillClass(c.value)}" title="Core ${c.core}">C${c.core}: ${fmt(c.value)}</span>`).join('');
+    const pills = ccds[ccd].map(c => {
+      const scope = coreScopeFor(c.core);
+      const st = tuneStatusFor(scope, currentScopeId);
+      return `<span class="co-pill ${pillClass(c.value)} ${st.cls}" title="Core ${c.core}${st.tip}">C${c.core}: ${fmt(c.value)}${st.badge}</span>`;
+    }).join('');
     html += `<div class="muted small" style="margin-top:0.5rem">${label}</div><div class="co-pills">${pills}</div>`;
   });
+  if (tuning) {
+    const legend = `<div class="tune-legend"><span class="tune-locked">🔒 locked</span> · <span class="tune-probing">▶ probing</span> · <span class="tune-pending">pending</span></div>`;
+    html = legend + html;
+  }
   el.innerHTML = html;
+}
+
+// Render the per-core status grid shown beneath the live status line.
+// One pill per core that has been activated ("Set to Core N" seen),
+// with iter X/Y and any error/WHEA counts, color-coded by status.
+// Empty input -> empty string (suppresses the section entirely until
+// CoreCycler emits its first "Set to Core" line).
+function renderPerCoreGrid(perCore) {
+  if (!Array.isArray(perCore) || perCore.length === 0) return '';
+  const pills = perCore.map(c => {
+    const cls = c.status === 'failed' ? 'pc-failed'
+              : c.status === 'passed' ? 'pc-passed'
+              : 'pc-testing';
+    const iter = c.iterationsTotal > 0 ? `${c.iterations}/${c.iterationsTotal}` : `${c.iterations}`;
+    const tags = [];
+    if (c.errors > 0) tags.push(`${c.errors} err`);
+    if (c.whea   > 0) tags.push(`${c.whea} WHEA`);
+    const tail = tags.length ? ` · <span class="pc-bad">${tags.join(' · ')}</span>` : '';
+    return `<span class="pc-pill ${cls}" title="Core ${c.core} — ${c.status}">C${c.core} · ${iter}${tail}</span>`;
+  }).join('');
+  return `<div class="pc-grid-label">Per-core progress:</div><div class="pc-grid">${pills}</div>`;
 }
 
 async function loadCoValues() {
@@ -1017,28 +1078,24 @@ async function pollStatus() {
     stateName = s.state;
     if (s.state === 'TESTING' && s.live) {
       const c = s.live;
+      const perCoreGrid = renderPerCoreGrid(c.perCore);
       document.getElementById('status-content').innerHTML =
         `<p>Testing core <strong>${c.currentCore ?? '?'}</strong> · Iteration <strong>${c.iteration ?? '?'}/${c.iterationsTotal ?? '?'}</strong></p>
-         <p>Errors so far: ${c.errors} · WHEA: ${c.wheaErrors} · Runtime: ${c.runtime || '—'}</p>`;
+         <p>Errors so far: ${c.errors} · WHEA: ${c.wheaErrors} · Runtime: ${c.runtime || '—'}</p>
+         ${perCoreGrid}`;
     }
-    // Live CO panel: show only during testing. Refresh from the SMU
-    // every 3 polls (3 s) so Auto-Adjust and Smart Tune writes are
-    // visible. Using a side-effect-free fetcher (pollCurrentCo) instead
-    // of loadCoValues so the form's mode tab doesn't auto-switch under
-    // the user every 3 seconds.
-    const liveCard = document.getElementById('live-co-card');
-    if (s.state === 'TESTING') {
-      liveCard?.classList.remove('hidden');
-      liveCoRefreshCounter++;
-      if (liveCoRefreshCounter >= 3) {
-        liveCoRefreshCounter = 0;
-        await pollCurrentCo();
-      }
-      renderLiveCo();
-    } else {
-      liveCard?.classList.add('hidden');
+    // Live CO panel: always visible (set in index.html without `hidden`).
+    // Refresh from the SMU every 3 polls (3 s) so Auto-Adjust and Smart
+    // Tune writes are visible during tunes, and the idle case still
+    // shows fresh values without forcing a manual page reload. Using a
+    // side-effect-free fetcher (pollCurrentCo) instead of loadCoValues
+    // so the form's mode tab doesn't auto-switch under the user.
+    liveCoRefreshCounter++;
+    if (liveCoRefreshCounter >= 3) {
       liveCoRefreshCounter = 0;
+      await pollCurrentCo();
     }
+    renderLiveCo();
     if (s.state === 'REPORTING') {
       // Only fetch + rebuild the report on the *transition* into
       // REPORTING; otherwise we re-fetched once per second and reset
@@ -1057,7 +1114,26 @@ async function pollStatus() {
       playSafetyBeep();
       lastWheaCount = s.wheaEvents.length;
     }
-    if (s.smartTune) SmartTune.renderState(s.smartTune);
+    if (s.smartTune) {
+      latestSmartTune = s.smartTune;
+      // One-shot auto-switch to per-core when a tune starts, so the
+      // user immediately sees per-core CO progression without having
+      // to click a tab. Respects manual switches after - we only do
+      // it once per tune (flag resets when tune ends/stops).
+      if (s.smartTune.status === 'RUNNING' && !autoSwitchedForTune) {
+        if (liveCoView !== 'per-core') {
+          liveCoView = 'per-core';
+          document.querySelectorAll('.live-co-tab').forEach(t => t.classList.toggle('active', t.dataset.view === 'per-core'));
+        }
+        autoSwitchedForTune = true;
+      } else if (s.smartTune.status !== 'RUNNING') {
+        autoSwitchedForTune = false;
+      }
+      SmartTune.renderState(s.smartTune);
+    } else {
+      latestSmartTune = null;
+      autoSwitchedForTune = false;
+    }
     // Surface the BIOS-setup card if the server reports the last CO
     // write didn't take effect (e.g. a Smart Tune apply silently failed).
     if (s.coWritesActive === false) {
