@@ -169,7 +169,12 @@ function Inspect-SafetySnapshot {
         $violations.Add(@{ metric='WHEA delta'; value=$wheaDelta; limit=0; severity='abort' })
     }
 
-    $script:Safety.Violations = @($violations)
+    # NB: do not write `@($violations)`. In PowerShell 7.5+, applying @()
+    # to a Generic.List[object] raises [System.ArgumentException]
+    # "Argument types do not match" - this is the catch-all the safety
+    # inspector was hitting every /api/status tick once the guard was
+    # armed. Call .ToArray() to flatten to Object[] explicitly.
+    $script:Safety.Violations = $violations.ToArray()
 
     # Track consecutive breaches per metric
     $abortNow = $false
@@ -214,9 +219,16 @@ function Inspect-SafetySnapshot {
     } catch {
         # Log once per failure with full type/stack info, then degrade
         # to no-op for this tick. Next /api/status will retry on a
-        # fresh snapshot.
-        $ex = $_.Exception
-        Write-Log WARN "Inspect-SafetySnapshot failed (returning empty for this tick): [$($ex.GetType().FullName)] $($ex.Message) :: $($_.ScriptStackTrace -split "`n" | Select-Object -First 3 -join ' | ')"
+        # fresh snapshot. The log call is itself wrapped so a formatting
+        # bug here can't 500 /api/status (the very thing this guard
+        # exists to prevent).
+        try {
+            $ex = $_.Exception
+            $stack = if ($_.ScriptStackTrace) {
+                (($_.ScriptStackTrace -split "`n") | Select-Object -First 3) -join ' | '
+            } else { '(no stack)' }
+            Write-Log WARN "Inspect-SafetySnapshot failed (returning empty for this tick): [$($ex.GetType().FullName)] $($ex.Message) :: $stack"
+        } catch {}
         return @()
     }
 }
