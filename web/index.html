@@ -138,6 +138,25 @@
     </div>
   </section>
 
+  <!-- Tune Results: per-core table of what Smart Auto-Adjust found,
+       shown when the tune completes. Surfaces start CO vs locked CO vs
+       what the SMU is currently at, with explicit Apply / Revert
+       buttons so the user reviews before committing. -->
+  <section id="tune-results-card" class="card hidden">
+    <div class="tune-results-header">
+      <h2>🎯 Tune Results</h2>
+      <span id="tune-results-meta" class="muted small">—</span>
+    </div>
+    <p id="tune-results-summary" class="muted small">—</p>
+    <div id="tune-results-table-wrap"></div>
+    <div class="actions tune-results-actions">
+      <button id="tune-apply-results" class="primary">▶ Apply recommended values</button>
+      <button id="tune-revert-launch" class="secondary">↺ Revert to launch values</button>
+      <button id="tune-save-profile" class="secondary">💾 Save as profile…</button>
+      <button id="tune-dismiss" class="secondary">Dismiss</button>
+    </div>
+  </section>
+
   <!-- Pro Dashboard: live graphs + stats. Auto-shows during a test; toggle button always available. -->
   <section id="pro-dashboard" class="card pro-dashboard hidden">
     <div class="pro-header">
@@ -293,7 +312,14 @@
           <option value="overclock">Overclock — per-CCD + per-core · positive CO offsets to chase higher boost</option>
         </select>
       </div>
-      <p class="muted small">Smart Auto-Adjust uses bisection + telemetry + crash history. See the Tune Theater for live progress.</p>
+      <div class="co-input apply-mode-row">
+        <label>When tune finishes:</label>
+        <div class="apply-mode-choices">
+          <label class="inline-radio"><input type="radio" name="applyMode" value="report" checked> Show report (recommended) — revert CO to launch values; review per-core table; apply explicitly</label>
+          <label class="inline-radio"><input type="radio" name="applyMode" value="live"> Apply as we go — keep the SMU at whatever the tune ended at</label>
+        </div>
+      </div>
+      <p class="muted small">Smart Auto-Adjust uses bisection + telemetry + crash history. See the Tune Theater for live progress and the Tune Results card for the per-core verdict.</p>
     </div>
 
     <div id="mode-info-smart" class="info-box hidden">

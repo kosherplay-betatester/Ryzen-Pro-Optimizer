@@ -8,6 +8,60 @@ hit 1.0 yet — see the roadmap in [README.md](README.md#roadmap).
 
 ---
 
+## [0.7.1] — 2026-06-03 · "Tune Results table + report-mode default"
+
+Smart Auto-Adjust now ships with an explicit per-core results view and a
+new default behaviour that protects the user from accidentally living
+on whatever value the tune happened to end at.
+
+### New
+
+- **Tune Results card** — appears when Smart Auto-Adjust transitions to
+  `COMPLETED`. One row per core showing **Start CO**, **Recommended CO**
+  (per-core scope's locked value > parent CCD scope's locked value >
+  launch fallback), **SMU now**, **owning scope**, **probe count**, and
+  **outcome** (Locked / Failed / Not tuned). Colour-coded green / amber
+  / neutral with first-column status bar. Four explicit action buttons:
+  - **Apply recommended values** — `POST /api/smart-tune/apply-results`
+    writes the resolved per-core CO to the SMU; same panic-revert
+    breadcrumb pattern the safety guard uses, so a hung write on
+    apply still has a rollback path on next boot.
+  - **Revert to launch values** — reuses the existing `/api/co/revert`.
+  - **Save as profile…** — names + persists the recommended values via
+    the standard `/api/profiles` endpoint, so it appears in the regular
+    Profiles list with full Load / Apply / Delete affordances.
+  - **Dismiss** — hides the card; state persists server-side so it can
+    be re-surfaced.
+- **`applyMode` option on Smart Auto-Adjust start** — radio in the
+  start form, with two values:
+  - **`report`** *(new default, recommended)* — probes apply CO writes
+    during the tune as they have to (you can't stress-test a value
+    without writing it), but when the tune completes the server
+    automatically restores the launch CO snapshot before flipping the
+    state to `REPORTING`. The user reviews the Tune Results card and
+    commits the recommended values explicitly via the Apply button.
+    Safer-by-default for users walking away from a multi-hour run.
+  - **`live`** *(opt-in)* — legacy behaviour. SMU stays at whatever the
+    tune ended at. Use when you want continuous, in-place tuning and
+    have eyes on the system.
+- **`Get-RecommendedCoFromTune`** in `lib/smart-tuner.ps1` and the new
+  **`POST /api/smart-tune/apply-results`** route — both sides agree on
+  the same resolution rule: per-core scope wins over CCD scope when
+  both locked; FAILED and PROBING bounds are not trustworthy, so those
+  cores fall back to the launch value rather than the half-explored
+  state machine bound. Refuses to apply unless the tune status is
+  `COMPLETED` (no partial commits while probing is still in flight).
+
+### Notes
+
+- Basic Auto-Adjust (the CoreCycler-driven AutomaticTestMode) keeps its
+  current behaviour this release. Adding report-mode there requires
+  intercepting CoreCycler's own CO writes, which is a larger change;
+  the per-core results table will be extended to surface it from the
+  CoreCycler log tail in a follow-up.
+
+---
+
 ## [0.7.0] — 2026-06-03 · "Auto-updater + per-core visibility"
 
 Two themes: full per-core visibility during both stress tests and Smart

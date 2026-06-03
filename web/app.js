@@ -234,6 +234,136 @@ function renderLiveCo() {
   el.innerHTML = html;
 }
 
+// ----------------------------------------------------------------------------
+//  Tune Results - per-core table shown after a Smart Tune completes
+// ----------------------------------------------------------------------------
+//  Surfaces the locked CO per core (resolved per-core scope > CCD scope >
+//  launch value), what the SMU is currently at, and per-scope probe/state
+//  info. Actions:
+//    [Apply recommended] -> POST /api/smart-tune/apply-results
+//    [Revert to launch]  -> POST /api/co/revert
+//    [Save as profile]   -> POST /api/profiles with the recommended values
+//    [Dismiss]           -> hide card (state persists server-side)
+// ----------------------------------------------------------------------------
+
+// Resolve "what would Apply Recommended write to core N". Same rule
+// the server uses in Get-RecommendedCoFromTune - per-core scope wins
+// when LOCKED, else the parent CCD scope when LOCKED, else launch.
+function recommendedCoFor(coreIdx, smartTune, launchVals) {
+  const launch = (launchVals && launchVals[coreIdx] != null) ? launchVals[coreIdx] : 0;
+  if (!smartTune || !Array.isArray(smartTune.scopes)) return launch;
+  let val = launch;
+  const ccd = smartTune.scopes.find(s => Array.isArray(s.cores) && s.cores.includes(coreIdx) && /^CCD\d+$/.test(s.id || ''));
+  if (ccd && ccd.status === 'LOCKED' && ccd.locked != null) val = ccd.locked;
+  const perCore = smartTune.scopes.find(s => s.id === `core${coreIdx}`);
+  if (perCore && perCore.status === 'LOCKED' && perCore.locked != null) val = perCore.locked;
+  return val;
+}
+
+// Status label and class for a core, derived from the most-specific
+// owning scope. Used to color-code the per-core row.
+function coreOutcomeFor(coreIdx, smartTune) {
+  if (!smartTune || !Array.isArray(smartTune.scopes)) return { label: '—', cls: '' };
+  const perCore = smartTune.scopes.find(s => s.id === `core${coreIdx}`);
+  if (perCore && perCore.status !== 'PENDING') {
+    if (perCore.status === 'LOCKED') return { label: 'Locked', cls: 'tr-locked', scope: perCore.id, probes: perCore.scopeState?.probesCompleted ?? 0 };
+    if (perCore.status === 'FAILED') return { label: 'Failed', cls: 'tr-failed', scope: perCore.id, probes: perCore.scopeState?.probesCompleted ?? 0 };
+    return { label: perCore.status, cls: 'tr-pending', scope: perCore.id, probes: perCore.scopeState?.probesCompleted ?? 0 };
+  }
+  const ccd = smartTune.scopes.find(s => Array.isArray(s.cores) && s.cores.includes(coreIdx) && /^CCD\d+$/.test(s.id || ''));
+  if (ccd) {
+    if (ccd.status === 'LOCKED') return { label: 'Locked via ' + ccd.id, cls: 'tr-locked', scope: ccd.id, probes: ccd.scopeState?.probesCompleted ?? 0 };
+    if (ccd.status === 'FAILED') return { label: 'Failed via ' + ccd.id, cls: 'tr-failed', scope: ccd.id, probes: ccd.scopeState?.probesCompleted ?? 0 };
+    return { label: ccd.status + ' via ' + ccd.id, cls: 'tr-pending', scope: ccd.id, probes: ccd.scopeState?.probesCompleted ?? 0 };
+  }
+  return { label: 'Not tuned', cls: 'tr-pending', scope: '—', probes: 0 };
+}
+
+// Render the table contents into #tune-results-table-wrap. Sized for
+// up to 32 cores; tabular numerics so the columns stay aligned.
+function renderTuneResults(smartTune) {
+  const card = document.getElementById('tune-results-card');
+  const wrap = document.getElementById('tune-results-table-wrap');
+  const meta = document.getElementById('tune-results-meta');
+  const summary = document.getElementById('tune-results-summary');
+  if (!card || !wrap || !cpuInfo) return;
+  if (!smartTune || smartTune.status !== 'COMPLETED') { card.classList.add('hidden'); return; }
+
+  card.classList.remove('hidden');
+  const applied = smartTune.applyMode === 'live';
+  meta.textContent = `${smartTune.mode || '?'} · ${smartTune.direction || '?'} · ` +
+                     (applied ? 'live apply mode (already on SMU)' : 'report mode (SMU reverted to launch)');
+
+  let lockedCount = 0, failedCount = 0;
+  let rows = '';
+  for (let i = 0; i < cpuInfo.Cores; i++) {
+    const start = (launchValues && launchValues[i] != null) ? launchValues[i] : 0;
+    const cur   = (currentValues && currentValues[i] != null) ? currentValues[i] : 0;
+    const rec   = recommendedCoFor(i, smartTune, launchValues);
+    const o     = coreOutcomeFor(i, smartTune);
+    if (o.cls === 'tr-locked') lockedCount++;
+    if (o.cls === 'tr-failed') failedCount++;
+    const delta = rec - start;
+    const deltaTxt = delta === 0 ? '' : (delta > 0 ? `(+${delta})` : `(${delta})`);
+    const ccdLabel = cpuInfo.IsDualCcd ? `CCD${Math.floor(i / cpuInfo.CoresPerCcd)}` : 'CCD0';
+    rows += `<tr class="${o.cls}">
+      <td>C${i}</td>
+      <td class="tr-ccd">${ccdLabel}</td>
+      <td class="tr-num">${start}</td>
+      <td class="tr-num"><strong>${rec}</strong> <span class="muted small">${deltaTxt}</span></td>
+      <td class="tr-num">${cur}</td>
+      <td>${escHtml(o.scope || '—')}</td>
+      <td class="tr-num">${o.probes ?? '—'}</td>
+      <td>${escHtml(o.label)}</td>
+    </tr>`;
+  }
+
+  wrap.innerHTML = `<table class="tune-results-table">
+    <thead><tr>
+      <th>Core</th><th>CCD</th><th>Start CO</th><th>Recommended</th><th>SMU now</th><th>Scope</th><th>Probes</th><th>Outcome</th>
+    </tr></thead>
+    <tbody>${rows}</tbody>
+  </table>`;
+
+  if (applied) {
+    summary.innerHTML = `${lockedCount} cores locked · ${failedCount} failed. ` +
+      `Values are already on the SMU — use <strong>Revert to launch</strong> if anything feels wrong, or <strong>Save as profile</strong> to keep this configuration.`;
+  } else {
+    summary.innerHTML = `${lockedCount} cores locked · ${failedCount} failed. ` +
+      `The SMU has been reverted to your launch values for safety. ` +
+      `Review the table above, then click <strong>Apply recommended</strong> to commit, or <strong>Save as profile</strong> to keep without applying.`;
+  }
+}
+
+async function applyTuneResults() {
+  const btn = document.getElementById('tune-apply-results');
+  btn.disabled = true;
+  try {
+    const r = await fetchJson('/api/smart-tune/apply-results', { method: 'POST' });
+    if (!r.ok) { showToast('Apply failed: ' + r.error, 'error'); return; }
+    showToast('Tune results applied to SMU ✓');
+    await loadCoValues();
+  } finally { btn.disabled = false; }
+}
+
+async function saveTuneResultsAsProfile() {
+  const name = prompt('Profile name?', `smart-tune-${new Date().toISOString().slice(0,10)}`);
+  if (!name) return;
+  // Build the recommended values array and POST it as a profile.
+  // Reuses the standard /api/profiles endpoint - the values column
+  // travels as `values` so the rest of the profile machinery (load,
+  // apply, delete) treats it identically to a manually-saved profile.
+  const recValues = [];
+  for (let i = 0; i < cpuInfo.Cores; i++) {
+    recValues.push(recommendedCoFor(i, latestSmartTune, launchValues));
+  }
+  const body = { name, mode: 'per-core', values: recValues, notes: 'Saved from Smart Tune results' };
+  const r = await fetchJson('/api/profiles', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+  if (!r.ok) { showToast('Profile save failed: ' + r.error, 'error'); return; }
+  showToast(`📸 Saved profile "${name}"`);
+  await loadProfiles();
+}
+
 // Render the per-core status grid shown beneath the live status line.
 // One pill per core that has been activated ("Set to Core N" seen),
 // with iter X/Y and any error/WHEA counts, color-coded by status.
@@ -452,7 +582,8 @@ async function startTest() {
   if (mode === 'smart') {
     const smartMode = document.getElementById('smart-mode').value;
     const direction = smartMode === 'overclock' ? 'overclock' : 'undervolt';
-    const ok = await SmartTune.start(smartMode, direction);
+    const applyMode = document.querySelector('input[name="applyMode"]:checked')?.value || 'report';
+    const ok = await SmartTune.start(smartMode, direction, applyMode);
     if (!ok) return;
     document.getElementById('start-test').classList.add('hidden');
     document.getElementById('stop-test').classList.remove('hidden');
@@ -1130,6 +1261,7 @@ async function pollStatus() {
         autoSwitchedForTune = false;
       }
       SmartTune.renderState(s.smartTune);
+      renderTuneResults(s.smartTune);
     } else {
       latestSmartTune = null;
       autoSwitchedForTune = false;
@@ -1661,6 +1793,15 @@ document.addEventListener('DOMContentLoaded', async () => {
     setInterval(pollTelemetry, POLL_INTERVAL_ACTIVE_MS);
     setInterval(pollStatus, POLL_INTERVAL_ACTIVE_MS);
     setInterval(sendHeartbeat, 5000);  // every 5s (no-op if user opted out)
+
+    // Tune Results action buttons. The card itself is shown by
+    // renderTuneResults() when smartTune.status === 'COMPLETED'.
+    document.getElementById('tune-apply-results')?.addEventListener('click', applyTuneResults);
+    document.getElementById('tune-revert-launch')?.addEventListener('click', revertCo);
+    document.getElementById('tune-save-profile')?.addEventListener('click', saveTuneResultsAsProfile);
+    document.getElementById('tune-dismiss')?.addEventListener('click', () => {
+      document.getElementById('tune-results-card')?.classList.add('hidden');
+    });
   } catch (e) {
     document.body.insertAdjacentHTML('beforeend', `<div class="card warn">Failed to initialize: ${e.message}</div>`);
   }
@@ -1762,11 +1903,11 @@ const SmartTune = (() => {
     }
   }
 
-  async function start(mode, direction) {
+  async function start(mode, direction, applyMode) {
     const r = await fetchJson('/api/smart-tune/start', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ mode, direction })
+      body: JSON.stringify({ mode, direction, applyMode })
     });
     if (!r.ok) { showToast('Start failed: ' + r.error, 'error'); return false; }
     lastSeqId = 0;
@@ -1774,6 +1915,8 @@ const SmartTune = (() => {
     show();
     ProDash.resetStats();
     ProDash.show();
+    // New tune - hide any stale Tune Results card from a prior run.
+    document.getElementById('tune-results-card')?.classList.add('hidden');
     return true;
   }
 

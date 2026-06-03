@@ -142,6 +142,24 @@ h3 { font-size: 0.9rem; margin: 1rem 0 0.4rem; color: var(--text); }
 .co-pill.neg { color: var(--accent); }
 .co-pill.pos { color: var(--warning); }
 
+/* Tune Results card - per-core table shown after a Smart Tune completes.
+   Compact tabular layout with one row per core, colour-coded by
+   outcome (locked/failed/pending). Sized for up to 32 cores. */
+.tune-results-header { display: flex; justify-content: space-between; align-items: center; gap: 1rem; flex-wrap: wrap; }
+.tune-results-header h2 { margin: 0; }
+.tune-results-table { width: 100%; border-collapse: collapse; margin: 0.4rem 0 0.6rem 0; font-size: 0.85rem; }
+.tune-results-table th, .tune-results-table td { padding: 0.35rem 0.6rem; text-align: left; border-bottom: 1px solid var(--border); }
+.tune-results-table th { font-weight: 600; color: var(--muted); font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.05em; }
+.tune-results-table .tr-num { font-family: ui-monospace, Consolas, monospace; font-variant-numeric: tabular-nums; text-align: right; }
+.tune-results-table .tr-ccd { color: var(--muted); font-size: 0.8rem; }
+.tune-results-table tr.tr-locked  { background: rgba(16,185,129,0.04); }
+.tune-results-table tr.tr-locked  td:first-child { border-left: 3px solid rgba(16,185,129,0.6); padding-left: 0.4rem; }
+.tune-results-table tr.tr-failed  { background: rgba(245,158,11,0.05); }
+.tune-results-table tr.tr-failed  td:first-child { border-left: 3px solid rgba(245,158,11,0.6); padding-left: 0.4rem; }
+.tune-results-table tr.tr-pending td:first-child { border-left: 3px solid var(--border); padding-left: 0.4rem; }
+.tune-results-actions { margin-top: 0.6rem; flex-wrap: wrap; }
+.apply-mode-row .apply-mode-choices { display: flex; flex-direction: column; gap: 0.3rem; }
+
 /* Tune-status overlay on Live CO per-core pills. Adds a border tint +
    subtle background so the user can see which cores Auto-Adjust has
    already locked, which is being probed right now, and which haven't

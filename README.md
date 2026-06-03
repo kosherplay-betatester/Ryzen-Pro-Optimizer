@@ -1,6 +1,6 @@
 # Ryzen Pro Optimizer
 
-**Current version: 0.7.0** — see [CHANGELOG.md](CHANGELOG.md) for full release notes.
+**Current version: 0.7.1** — see [CHANGELOG.md](CHANGELOG.md) for full release notes.
 
 A friendly, local web-based UI for tuning AMD Ryzen **Curve Optimizer** offsets — sets per-core CO values from Windows (no BIOS reboot), runs stress tests via [CoreCycler](https://github.com/sp00n/corecycler), parses logs into a clean pass/fail report with smart next-step suggestions, and shows live CPU telemetry the whole time.
 
@@ -9,6 +9,12 @@ Now ships with a **Pro Dashboard** (live charts, V/F scatter, per-core heatmap, 
 Think of it as a free, open, transparent, manual-by-default alternative to Hydra — built on top of CoreCycler so the proven stress-test machinery is doing the heavy lifting, while we focus on the UX, safety, and live visibility layer most users actually need.
 
 ---
+
+## What's new in 0.7.1 (highlights)
+
+- **Tune Results card** — per-core table that appears when Smart Auto-Adjust completes. One row per core showing **Start CO** vs **Recommended CO** vs **what the SMU is actually at right now**, plus the owning scope, probe count, and outcome (Locked / Failed / Not tuned). Colour-coded green/amber/neutral. Four explicit action buttons: **Apply recommended** (commits to SMU via the new `/api/smart-tune/apply-results` route with the same panic-revert breadcrumb pattern the safety guard uses), **Revert to launch values**, **Save as profile…**, **Dismiss**.
+- **Report mode is now the default for Smart Auto-Adjust.** When the tune completes, the server automatically restores your launch CO snapshot before flipping state to REPORTING — you're at a known-safe baseline while you review the table, and you commit explicitly. Old behaviour (leave the SMU at whatever the tune ended at) is still available as an opt-in radio: **Apply as we go**. Safer-by-default for users walking away from a multi-hour run.
+- **Resolution rule** for "what would Apply Recommended write" — per-core scope's locked value wins; otherwise the parent CCD scope's locked value; otherwise the launch fallback. FAILED and still-probing scopes fall back to launch (not their half-explored bounds), so the recommendation is always either *verified-stable* or *known-safe-untouched*.
 
 ## What's new in 0.7.0 (highlights)
 

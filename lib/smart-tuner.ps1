@@ -160,12 +160,24 @@ function Tune-Scope {
 }
 
 # In-memory orchestrator state. Reset by Stop-SmartTune.
+# ApplyMode semantics:
+#   'report' (default, safer)  Probes happen as usual (SMU writes are
+#                              required to actually test a candidate),
+#                              but on COMPLETED the server reverts SMU
+#                              back to the launch snapshot. The user
+#                              sees the per-core locked values in the
+#                              Tune Results table and explicitly commits
+#                              via /api/smart-tune/apply-results.
+#   'live'                     Old behavior: SMU stays at whatever the
+#                              tune ended with. Opt-in for users who
+#                              want continuous in-place tuning.
 $script:Tune = @{
     Status       = 'IDLE'        # IDLE | RUNNING | STOPPING | STOPPED | COMPLETED | FAILED
     SessionId    = $null
     StartedAt    = $null
     Mode         = $null
     Direction    = $null
+    ApplyMode    = 'report'      # 'report' | 'live' - see top of file
     Cpu          = $null
     Policy       = $null
     Scopes       = @()           # array of @{id,isVCache,cores,status,locked,scopeState,...}
@@ -180,7 +192,8 @@ function Start-SmartTune {
         [Parameter(Mandatory)][string]$Mode,
         [Parameter(Mandatory)][string]$Direction,
         [Parameter(Mandatory)][string]$SessionPath,
-        [Parameter(Mandatory)][string]$HistoryPath
+        [Parameter(Mandatory)][string]$HistoryPath,
+        [ValidateSet('report','live')][string]$ApplyMode = 'report'
     )
     Clear-TunerNarrative
     $policy = Get-ModePolicy -Mode $Mode -Direction $Direction
@@ -191,6 +204,7 @@ function Start-SmartTune {
     $script:Tune.StartedAt   = (Get-Date).ToUniversalTime().ToString('o')
     $script:Tune.Mode        = $Mode
     $script:Tune.Direction   = $Direction
+    $script:Tune.ApplyMode   = $ApplyMode
     $script:Tune.Cpu         = $Cpu
     $script:Tune.Policy      = $policy
     $script:Tune.Scopes      = $plan
@@ -307,11 +321,46 @@ function Get-SmartTuneState {
         startedAt   = $script:Tune.StartedAt
         mode        = $script:Tune.Mode
         direction   = $script:Tune.Direction
+        applyMode   = $script:Tune.ApplyMode
         scopes      = @($script:Tune.Scopes)
         currentIdx  = $script:Tune.CurrentIdx
         narrative   = (Get-NewNarrativeEntries -SinceSeqId $SinceSeqId)
         latestSeqId = (Get-CurrentNarrativeSeqId)
     }
+}
+
+# Compute the per-core CO array that represents the tune's findings.
+# Resolution: per-core scope's locked value (most specific) wins;
+# otherwise the parent CCD scope's locked value; otherwise the launch
+# snapshot value. Used by /api/smart-tune/apply-results to commit the
+# tune's recommendations to the SMU when the user accepts the report.
+function Get-RecommendedCoFromTune {
+    param(
+        [Parameter(Mandatory)][int]$CoreCount,
+        [Parameter(Mandatory)][int[]]$LaunchValues
+    )
+    $out = New-Object int[] $CoreCount
+    for ($i = 0; $i -lt $CoreCount; $i++) {
+        $out[$i] = if ($i -lt $LaunchValues.Count) { [int]$LaunchValues[$i] } else { 0 }
+    }
+    foreach ($sc in @($script:Tune.Scopes)) {
+        # Only LOCKED scopes have a trustworthy `locked` value; FAILED
+        # leaves the bound at the safest known, and PENDING/PROBING is
+        # mid-flight - in both cases falling back to the launch value
+        # is safer than guessing.
+        if ($sc.status -ne 'LOCKED') { continue }
+        if ($null -eq $sc.locked)    { continue }
+        foreach ($core in @($sc.cores)) {
+            if ($core -ge 0 -and $core -lt $CoreCount) { $out[$core] = [int]$sc.locked }
+        }
+    }
+    # Per-core scopes override their parent CCD scope - they were
+    # planned to refine the CCD result, so when both have a locked
+    # value the per-core one is the more specific answer. We achieve
+    # this by relying on the plan order: CCD scopes are added first,
+    # per-core second, so the foreach above naturally lets per-core
+    # overwrite CCD assignments.
+    ,$out
 }
 
 # One orchestrator tick: drives ONE probe of the current scope.

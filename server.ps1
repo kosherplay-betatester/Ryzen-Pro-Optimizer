@@ -30,7 +30,7 @@ $ErrorActionPreference = 'Stop'
 
 # App version. Bumped manually per release; surfaced via /api/version
 # and shown in the UI footer. Keep in sync with CHANGELOG.md.
-$script:AppVersion = '0.7.0'
+$script:AppVersion = '0.7.1'
 
 # Project root
 $RepoRoot = $PSScriptRoot
@@ -574,6 +574,11 @@ Register-Route -Method POST -Path '/api/smart-tune/start' -Handler {
     $body = Read-JsonBody -Context $ctx
     $mode      = if ($body -and $body.mode) { [string]$body.mode } else { 'daily-driver' }
     $direction = if ($body -and $body.direction) { [string]$body.direction } else { 'undervolt' }
+    # applyMode: 'report' (default, safer - reverts SMU to launch values
+    # on completion so the user sees a Tune Results table and explicitly
+    # commits) or 'live' (legacy - SMU keeps whatever the tune ended at).
+    $applyMode = if ($body -and $body.applyMode) { [string]$body.applyMode } else { 'report' }
+    if ($applyMode -ne 'report' -and $applyMode -ne 'live') { $applyMode = 'report' }
     try {
         # Snapshot the current CO as a regular profile so the user can roll
         # back if Smart Tune converges somewhere worse than the starting
@@ -585,7 +590,8 @@ Register-Route -Method POST -Path '/api/smart-tune/start' -Handler {
         } catch { Write-Log WARN "Pre-Smart-Tune snapshot failed: $($_.Exception.Message)" }
 
         Start-SmartTune -Cpu $cpu -Mode $mode -Direction $direction `
-            -SessionPath $script:SmartTuneSessionPath -HistoryPath $script:SmartTuneHistoryPath
+            -SessionPath $script:SmartTuneSessionPath -HistoryPath $script:SmartTuneHistoryPath `
+            -ApplyMode $applyMode
         Set-CurrentState -NewState 'TESTING' -Data @{
             startedAt = (Get-Date -Format 'o')
             smartTune = $true
@@ -634,6 +640,32 @@ Register-Route -Method GET -Path '/api/smart-tune/state' -Handler {
     $q = $ctx.Request.Url.Query
     if ($q -match '[?&]since=(\d+)') { $since = [int]$Matches[1] }
     @{ ok = $true; data = (Get-SmartTuneState -SinceSeqId $since) }
+}
+
+# Commit the per-core CO values that Smart Tune recommended. Used by the
+# Tune Results table's [Apply recommended values] button when the tune
+# ran in 'report' mode (default). Only valid after a tune COMPLETES;
+# rejected while still RUNNING because the locked values aren't final.
+Register-Route -Method POST -Path '/api/smart-tune/apply-results' -Handler {
+    if (-not $coReady) { return @{ ok = $false; error = 'CO tool not initialized' } }
+    $st = Get-SmartTuneState -SinceSeqId 0
+    if ($st.status -ne 'COMPLETED') {
+        return @{ ok = $false; error = "Cannot apply - tune status=$($st.status), needs COMPLETED" }
+    }
+    $launch = if ($null -ne $launchSnapshot) { $launchSnapshot } else { @(0) * $cpu.Cores }
+    $values = Get-RecommendedCoFromTune -CoreCount $cpu.Cores -LaunchValues $launch
+    try {
+        # Same panic-revert breadcrumb pattern the safety guard uses -
+        # if the SMU write hangs the system, the next boot sees the
+        # breadcrumb and offers to revert.
+        Save-PanicRevertState -Values $values -Reason 'Smart Tune apply-results'
+        Set-AllCoreCo -Values $values
+        Clear-PanicRevertState
+        Write-Log INFO "Smart Tune results applied to SMU: $($values -join ',')"
+        @{ ok = $true; data = @{ applied = $values } }
+    } catch {
+        @{ ok = $false; error = $_.Exception.Message }
+    }
 }
 
 Register-Route -Method POST -Path '/api/smart-tune/resume' -Handler {
@@ -774,6 +806,23 @@ Register-Route -Method GET -Path '/api/status' -Handler {
         if (-not $continued) {
             Disable-SafetyGuard
             Clear-PanicRevertState
+            # Report-mode auto-revert: when Smart Tune completes cleanly
+            # in 'report' apply-mode, restore the launch CO snapshot so
+            # the user is at a known-safe baseline while they review the
+            # Tune Results table. They explicitly commit via
+            # /api/smart-tune/apply-results when ready. STOPPED/FAILED
+            # transitions bypass this - the safety-guard abort path
+            # already reverts to launch with a panic breadcrumb.
+            try {
+                $tstate = Get-SmartTuneState -SinceSeqId 0
+                if ($tstate.status -eq 'COMPLETED' -and $tstate.applyMode -eq 'report' `
+                        -and $coReady -and $null -ne $launchSnapshot) {
+                    Set-AllCoreCo -Values $launchSnapshot
+                    Write-Log INFO "Smart Tune completed in report mode - CO reverted to launch snapshot; user to apply via /api/smart-tune/apply-results"
+                }
+            } catch {
+                Write-Log WARN "Smart Tune complete-revert failed: $($_.Exception.Message)"
+            }
             Set-CurrentState -NewState 'REPORTING' -Force
         }
     }
