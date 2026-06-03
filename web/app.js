@@ -1350,13 +1350,26 @@ async function pollStatus() {
     const r = await fetchJson('/api/status');
     const s = r.data;
     stateName = s.state;
-    if (s.state === 'TESTING' && s.live) {
+    if (s.state === 'TESTING' || s.state === 'STOPPING') {
+      // Card was made visible by startTest. If s.live is populated,
+      // render the full status; otherwise show a placeholder so the
+      // user never sees a blank card during a test. s.live can be
+      // null briefly while CoreCycler boots and starts writing its
+      // log file (Get-LiveStatus returns null until $LastLogPath
+      // resolves) - without this fallback the card was just empty.
       const c = s.live;
-      const perCoreGrid = renderPerCoreGrid(c.perCore);
-      document.getElementById('status-content').innerHTML =
-        `<p>Testing core <strong>${c.currentCore ?? '?'}</strong> · Iteration <strong>${c.iteration ?? '?'}/${c.iterationsTotal ?? '?'}</strong></p>
-         <p>Errors so far: ${c.errors} · WHEA: ${c.wheaErrors} · Runtime: ${c.runtime || '—'}</p>
-         ${perCoreGrid}`;
+      const sc = document.getElementById('status-content');
+      if (c) {
+        const perCoreGrid = renderPerCoreGrid(c.perCore);
+        sc.innerHTML =
+          `<p>Testing core <strong>${c.currentCore ?? '?'}</strong> · Iteration <strong>${c.iteration ?? '?'}/${c.iterationsTotal ?? '?'}</strong></p>
+           <p>Errors so far: ${c.errors} · WHEA: ${c.wheaErrors} · Runtime: ${c.runtime || '—'}</p>
+           ${perCoreGrid}`;
+      } else if (!sc.dataset.placed || sc.dataset.placed !== 'waiting') {
+        sc.innerHTML = `<p class="muted small">⏳ Waiting for CoreCycler to start writing its log…</p>`;
+        sc.dataset.placed = 'waiting';
+      }
+      if (c) sc.dataset.placed = 'live';
     }
     // Live CO panel: always visible (set in index.html without `hidden`).
     // Refresh from the SMU every 3 polls (3 s) so Auto-Adjust and Smart
