@@ -48,6 +48,8 @@ function New-CoreCyclerConfig {
         [string]$StressTestProgram = 'PRIME95',
         [string]$Mode = 'SSE',
         [string]$RuntimePerCore = '6m',
+        [int]$NumberOfThreads = 1,
+        [string]$YCruncherTests = 'N63, VT3',
         [int]$MaxIterations = 1,
         [int[]]$CoresToTest,
         [Parameter(Mandatory)][int]$TotalCores,
@@ -70,7 +72,7 @@ function New-CoreCyclerConfig {
     [void]$sb.AppendLine('[General]')
     [void]$sb.AppendLine("stressTestProgram = $StressTestProgram")
     [void]$sb.AppendLine("runtimePerCore = $RuntimePerCore")
-    [void]$sb.AppendLine('numberOfThreads = 1')
+    [void]$sb.AppendLine("numberOfThreads = $NumberOfThreads")
     [void]$sb.AppendLine("maxIterations = $MaxIterations")
     [void]$sb.AppendLine("coresToIgnore = $($ignored -join ', ')")
     [void]$sb.AppendLine("skipCoreOnError = $skipOnError")
@@ -81,8 +83,21 @@ function New-CoreCyclerConfig {
     [void]$sb.AppendLine('treatWheaWarningAsError = 1')
     [void]$sb.AppendLine('restartTestProgramForEachCore = 1')
     [void]$sb.AppendLine('')
-    [void]$sb.AppendLine('[Prime95]')
-    [void]$sb.AppendLine("mode = $Mode")
+    # Emit the section matching the chosen stress test program. Emitting only
+    # [Prime95] while stressTestProgram = YCRUNCHER left y-cruncher on
+    # CoreCycler's built-in defaults and silently ignored $Mode.
+    if ($StressTestProgram -eq 'YCRUNCHER' -or $StressTestProgram -eq 'YCRUNCHER_OLD') {
+        [void]$sb.AppendLine('[yCruncher]')
+        [void]$sb.AppendLine("mode = $Mode")
+        [void]$sb.AppendLine("tests = $YCruncherTests")
+        [void]$sb.AppendLine('testDuration = 120')
+        [void]$sb.AppendLine('memory = Default')
+        [void]$sb.AppendLine('enableYCruncherLoggingWrapper = 1')
+    }
+    else {
+        [void]$sb.AppendLine('[Prime95]')
+        [void]$sb.AppendLine("mode = $Mode")
+    }
     [void]$sb.AppendLine('')
     [void]$sb.AppendLine('[Logging]')
     [void]$sb.AppendLine('logLevel = 4')
