@@ -421,6 +421,13 @@ Register-Route -Method POST -Path '/api/test/start' -Handler {
 
     $iterations = if ($body.PSObject.Properties['iterations']) { [int]$body.iterations } else { 1 }
     $mode = if ($body.PSObject.Properties['mode']) { [string]$body.mode } else { 'SSE' }
+    $program = if ($body.PSObject.Properties['stressTestProgram']) { [string]$body.stressTestProgram } else { 'PRIME95' }
+    $program = $program.ToUpperInvariant()
+    if ($program -notin @('PRIME95','YCRUNCHER','YCRUNCHER_OLD','AIDA64','LINPACK')) {
+        return @{ ok = $false; error = "Unknown stressTestProgram: $program" }
+    }
+    $threads = if ($body.PSObject.Properties['numberOfThreads']) { [int]$body.numberOfThreads } else { 1 }
+    if ($threads -lt 1 -or $threads -gt 2) { return @{ ok = $false; error = 'numberOfThreads must be 1 or 2' } }
     $auto = $false
     if ($body.PSObject.Properties['autoAdjust']) { $auto = [bool]$body.autoAdjust }
 
@@ -473,7 +480,7 @@ Register-Route -Method POST -Path '/api/test/start' -Handler {
         }
 
         $cfg = New-CoreCyclerConfig -RepoRoot $RepoRoot `
-            -StressTestProgram 'PRIME95' -Mode $mode -MaxIterations $iterations `
+            -StressTestProgram $program -Mode $mode -NumberOfThreads $threads -MaxIterations $iterations `
             -CoresToTest $coresToTest -TotalCores $cpu.Cores `
             -EnableAutomaticAdjustment $auto -AutoStartValues $autoStart `
             -AutoMaxValue $autoMax -AutoIncrementBy $autoInc

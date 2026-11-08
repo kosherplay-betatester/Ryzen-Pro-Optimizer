@@ -61,6 +61,7 @@ function Read-CoreCyclerLog {
     }
 
     $coreErrorLineIndexes = @()
+    $directErrCores = @()
     $currentCoreContextStack = @()  # Track the most recent "Set to Core N" seen for each error
     $maxIterSeen = 0
     $lastErrorCount = 0
@@ -92,6 +93,14 @@ function Read-CoreCyclerLog {
         if ($l -match 'core_error\b|has thrown an error\b|\bcore \d+ (has )?errored\b') {
             $coreErrorLineIndexes += $i
         }
+
+        # CoreCycler also names the core on its own ERROR lines. Needed
+        # because a run that dies immediately after an error (y-cruncher
+        # CALCULATIONERROR -> Exit-WithFatalError) never writes the matching
+        # [EVENTLOG] core_error line, so that last failing core was dropped.
+        if ($l -match '^\s*ERROR:\s*At Core (\d+)\b') {
+            $directErrCores += [int]$Matches[1]
+        }
     }
     $report.iterationsCompleted = $maxIterSeen
 
@@ -105,6 +114,7 @@ function Read-CoreCyclerLog {
             }
         }
     }
+    foreach ($c in $directErrCores) { if (-not $errCores.Contains([int]$c)) { $errCores.Add([int]$c) } }
     $errCores = @($errCores | Sort-Object -Unique)
 
     # Check Prime95 log for FATAL ERROR / Rounding - count as error indicator
